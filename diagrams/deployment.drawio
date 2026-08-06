@@ -1,0 +1,49 @@
+<mxfile host="app.diagrams.net" modified="2026-08-06T00:00:00.000Z" agent="Copilot" version="24.7.17" type="device">
+  <diagram id="deployment" name="Deployment">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="Sentinel Deployment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="620" y="80" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="Raspberry Pi" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="250" y="260" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="Docker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="470" y="260" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="K3s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="690" y="260" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="Local Storage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="910" y="260" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="Single host or small cluster" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="420" y="410" width="520" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="Supports" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="2" target="3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="Supports" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="2" target="4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="Supports" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="2" target="5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="Persists to" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="2" target="6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="12" value="Deployment target" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="3" target="7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="13" value="Deployment target" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="4" target="7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="14" value="Deployment target" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="5" target="7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
