@@ -1,0 +1,29 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs and runtime artifacts
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+
+# Node / frontend
+node_modules/
+dist/
+build/
+coverage/
+
+# Local environment files
+*.local
