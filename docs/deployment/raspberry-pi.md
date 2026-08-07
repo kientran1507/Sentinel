@@ -12,4 +12,4 @@ This document will describe how to deploy Sentinel on a Raspberry Pi or similar 
 
 ## Status
 
-Draft placeholder for Raspberry Pi deployment instructions.
+Planned for a later milestone.

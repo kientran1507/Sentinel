@@ -12,4 +12,4 @@ This document will describe the Sentinel API surface, including available endpoi
 
 ## Status
 
-Draft placeholder for API endpoint documentation.
+Planned for a later milestone.

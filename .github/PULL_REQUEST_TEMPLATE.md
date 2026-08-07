@@ -1,11 +1,11 @@
 # Summary
 
-Describe the changes in this pull request.
+Summarize the change and the milestone it supports.
 
 # Testing
 
-List the checks you ran.
+List the checks you ran or note why none were needed.
 
 # Notes
 
-Add any context reviewers should know.
+Add any reviewer context, rollout notes, or follow-up items.

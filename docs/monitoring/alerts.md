@@ -12,4 +12,4 @@ This document will describe the alerting model used by Sentinel, including trigg
 
 ## Status
 
-Draft placeholder for alerts documentation.
+Planned for a later milestone.

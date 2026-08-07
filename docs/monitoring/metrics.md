@@ -12,4 +12,4 @@ This document will describe the metrics collected by Sentinel and how they are s
 
 ## Status
 
-Draft placeholder for metrics documentation.
+Planned for a later milestone.

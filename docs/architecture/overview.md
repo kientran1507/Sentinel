@@ -1,34 +1,94 @@
-# Architecture Overview
+# Sentinel Overview
 
-Sentinel is a self-hosted monitoring platform for small infrastructure and homelab environments. It combines device discovery, health monitoring, metrics collection, and alerting into a single system that can run on lightweight hardware or in a small Kubernetes cluster.
+Sentinel is an intended self-hosted platform for network and infrastructure monitoring in homelab and small-to-medium environments. It is designed to provide a unified architecture for discovery, health checks, metric collection, alerting, and operational visibility.
 
-## What Sentinel Is
+Sentinel exists to reduce operational complexity created by fragmented monitoring stacks. Instead of combining unrelated tools for inventory, checks, alerts, and dashboards, Sentinel defines a single architecture with clear service boundaries and a consistent data lifecycle.
 
-Sentinel provides a central place to discover devices, observe their state, and surface actionable alerts. The goal is to reduce the number of separate tools needed to monitor a small environment while keeping the platform simple enough to deploy and operate locally.
+The platform is designed to address the following problems:
 
-## Problem It Solves
+- Limited visibility into device and service health across local infrastructure
+- Manual, inconsistent device inventory and monitoring onboarding
+- Delayed fault detection due to disconnected telemetry and alert pipelines
+- Operational overhead from managing multiple standalone monitoring tools
 
-Small teams and homelab operators often need to piece together discovery, metrics, alerting, and visualization from multiple tools. Sentinel is intended to unify those concerns into one deployable system with a clear data flow and a small operational footprint.
+Target users include homelab operators, platform engineers, DevOps teams, and small IT administrators who need practical self-hosted observability without heavyweight platform requirements.
 
-## Service Communication
+Design philosophy:
 
-The dashboard talks to a REST API exposed by Sentinel Core. Core coordinates the monitoring workflow and exchanges data with the discovery, monitoring, and alerting services. Shared configuration and infrastructure components provide the runtime environment and persistence needed by those services.
+- Self-hosted by default
+- Modular service boundaries
+- Lightweight deployment footprint
+- Infrastructure portability across Docker and Kubernetes
+- Incremental extensibility without architectural rewrites
 
-## Data Storage
+# System Goals
 
-Sentinel will store configuration, discovered device state, collected metrics, and alert history in project-backed storage that can be mounted locally or managed through the chosen deployment target. The exact storage backend will be defined as implementation work progresses.
+- Centralized infrastructure monitoring
+- Device discovery and inventory awareness
+- Real-time health and metric observation
+- Actionable alerting and notification routing
+- Lightweight deployment for constrained environments
+- Horizontal scalability as workloads grow
+- Extensibility for future integrations and modules
+- Self-hosted architecture with operator control
 
-## Device To Alert Flow
+# High-Level Architecture
 
-1. A discovery job finds or refreshes devices on the network.
-2. Monitoring checks collect health and metrics data from those devices.
-3. The alerting layer evaluates that data against configured thresholds and conditions.
-4. The dashboard and API present the resulting status, history, and active alerts.
+Sentinel is organized into independently scoped subsystems with explicit responsibilities.
 
-## Guiding Diagram
+| Subsystem | Responsibility |
+| --- | --- |
+| Dashboard | Presents infrastructure status, active alerts, and monitoring views to users. |
+| REST API | Provides a stable control and query surface for UI and external integrations. |
+| Discovery Service | Detects and maintains monitored device inventory. |
+| Monitoring Service | Executes health checks and metric collection workflows. |
+| Alert Engine | Evaluates monitoring data against alert rules and emits alert events. |
+| Notification Service | Delivers alert notifications through configured channels. |
+| Database | Stores device inventory, telemetry history, alert state, and configuration metadata. |
+| Kubernetes/Docker Infrastructure | Hosts runtime services and provides orchestration and operational primitives. |
 
-The first architecture diagram will anchor the implementation shape of the project and will be kept in sync with this document as the platform grows.
+At architecture level, the Dashboard communicates with the REST API, which coordinates Sentinel Core workflows. Core orchestrates Discovery, Monitoring, Alert Engine, and Database interactions, while Notification Service is triggered by alert events.
 
-## Status
+# Data Flow
 
-This is the first design draft and will evolve as services are implemented.
+Sentinel follows a deterministic monitoring-to-alert lifecycle:
+
+1. Discovery Service identifies devices and updates inventory state.
+2. Monitoring Service schedules and runs checks for discovered devices.
+3. Collected telemetry and state snapshots are persisted to the Database.
+4. Alert Engine evaluates current and historical data against defined conditions.
+5. Notification Service publishes alert outcomes to configured destinations.
+6. Dashboard retrieves system state through the REST API for operational visibility.
+
+```mermaid
+flowchart LR
+	A[Device Discovery] --> B[Monitoring]
+	B --> C[Database]
+	C --> D[Alert Engine]
+	D --> E[Notifications]
+	C --> F[Dashboard]
+	E --> F
+```
+
+# Deployment Model
+
+Sentinel is intended to support multiple self-hosted deployment targets:
+
+- Docker Compose for single-host deployments
+- Kubernetes (K3s) for lightweight clustered operation
+- Raspberry Pi for low-power edge or homelab installations
+- Linux servers for standard on-premises hosting
+
+These options are design targets and may be adopted incrementally as the system matures.
+
+# Future Expansion
+
+The architecture is intentionally open for future capability modules, including:
+
+- Prometheus integration
+- Grafana dashboards
+- SNMP monitoring
+- Agent-based monitoring
+- Plugin architecture for service extensions
+
+Future modules are planned as architectural extensions, not assumptions about current implementation status.

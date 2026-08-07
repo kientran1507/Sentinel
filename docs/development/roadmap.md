@@ -12,4 +12,4 @@ This document will describe the planned development stages for Sentinel and the 
 
 ## Status
 
-Draft placeholder for the project roadmap.
+Planned for a later milestone.

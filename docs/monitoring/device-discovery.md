@@ -12,4 +12,4 @@ This document will describe how Sentinel discovers devices on a network and turn
 
 ## Status
 
-Draft placeholder for device discovery documentation.
+Planned for a later milestone.

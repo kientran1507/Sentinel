@@ -1,126 +1,72 @@
 # Sentinel
 
-Sentinel is a self-hosted network and infrastructure monitoring platform designed for homelab and small-scale environments. It provides centralized monitoring, device discovery, health status visualization, and automated alerting to help administrators maintain reliable and secure systems.
+Sentinel is a self-hosted network and infrastructure monitoring platform designed for homelab and small-scale environments. It is intended to provide centralized monitoring, device discovery, alerting, and operational visibility in a lightweight, self-managed deployment.
 
-The project aims to simplify infrastructure management by integrating multiple monitoring components into a unified platform that can be deployed on lightweight hardware such as a Raspberry Pi or on standard Linux servers.
+## Architecture
 
----
+![Architecture](docs/images/architecture.svg)
 
-## Features
+The architecture overview describes the intended system boundaries, service responsibilities, and data flow for the platform.
 
-* Real-time network device monitoring
-* Automatic device discovery
-* Health and availability monitoring
-* Resource usage tracking
-* Alert and notification system
-* Centralized dashboard
-* Docker-based deployment
-* Kubernetes support
-* Modular and extensible architecture
-* Self-hosted and open-source
+## Documentation
 
----
+- [Architecture](docs/architecture/overview.md)
+- [Deployment](docs/deployment/docker.md)
+- [API](docs/api/endpoints.md)
+- [Monitoring](docs/monitoring/metrics.md)
+- [Troubleshooting](docs/troubleshooting/common-issues.md)
+- [Release Notes](docs/releases/v0.1.0.md)
+
+## Project Status
+
+- ✅ Foundation Complete (v0.1)
+- 🚧 Device Discovery (v0.2)
+- ⬜ Monitoring
+- ⬜ Alerting
+- ⬜ Dashboard
 
 ## Project Goals
 
 Sentinel is designed to provide:
 
-* Continuous monitoring of network infrastructure
-* Early detection of failures and outages
-* Simplified management of self-hosted services
-* Lightweight deployment suitable for homelab environments
-* Extensible architecture for future monitoring modules
+- Centralized infrastructure monitoring
+- Device discovery and inventory awareness
+- Real-time health and metric observation
+- Actionable alerting and notification routing
+- Lightweight deployment for constrained environments
+- Extensibility for future integrations and modules
+- Self-hosted architecture with operator control
 
----
+## Deployment Targets
 
-## Technology Stack
+Sentinel is intended to run on:
 
-The technologies used throughout the project include:
+- Docker Compose
+- Kubernetes (K3s)
+- Raspberry Pi
+- Linux servers
 
-* Docker
-* Kubernetes (K3s)
-* Linux
-* Raspberry Pi
-* Python
-* REST APIs
-* YAML
-* Git & GitHub
-
-Additional technologies may be introduced as the project evolves.
-
----
-
-## Repository Structure
+## Repository Layout
 
 ```text
 sentinel/
-├── docs/               # Project documentation
-├── infrastructure/     # Deployment and infrastructure configuration
-├── monitoring/         # Monitoring components
-├── scripts/            # Utility scripts
-├── configs/            # Configuration files
-├── assets/             # Images and diagrams
+├── docs/
+├── infrastructure/
+├── services/
+├── configs/
+├── scripts/
+├── tests/
+├── examples/
+├── diagrams/
+├── .github/
 ├── README.md
+├── CHANGELOG.md
 └── LICENSE
 ```
-
----
-
-## Documentation
-
-Project documentation is located in the `docs/` directory and will include:
-
-* System Architecture
-* Deployment Guide
-* Installation Guide
-* Configuration
-* Monitoring Components
-* Kubernetes Deployment
-* Docker Deployment
-* API Documentation
-* Troubleshooting
-* Future Improvements
-
----
-
-## Deployment
-
-Sentinel is designed to support deployment on:
-
-* Raspberry Pi
-* Linux Servers
-* Virtual Machines
-* Docker
-* Kubernetes (K3s)
-
----
-
-## Roadmap
-
-* [ ] Core monitoring engine
-* [ ] Device discovery
-* [ ] Metrics collection
-* [ ] Alert engine
-* [ ] Notification service
-* [ ] Web dashboard
-* [ ] Authentication and user management
-* [ ] REST API
-* [ ] Kubernetes deployment manifests
-* [ ] Comprehensive documentation
-
----
-
-## Contributing
-
-Contributions are welcome. If you have suggestions, bug reports, or feature requests, please open an issue or submit a pull request.
-
----
 
 ## License
 
 This project is licensed under the MIT License.
-
----
 
 ## Author
 

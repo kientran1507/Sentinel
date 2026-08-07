@@ -12,4 +12,4 @@ This document will describe how to contribute to Sentinel, including development
 
 ## Status
 
-Draft placeholder for contributor guidance.
+Planned for a later milestone.

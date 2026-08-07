@@ -12,4 +12,4 @@ This document will describe how to deploy Sentinel on K3s for lightweight Kubern
 
 ## Status
 
-Draft placeholder for K3s deployment instructions.
+Planned for a later milestone.

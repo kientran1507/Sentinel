@@ -12,4 +12,4 @@ This document will describe how Sentinel communicates across the network, includ
 
 ## Status
 
-Draft placeholder for networking documentation.
+Planned for a later milestone.

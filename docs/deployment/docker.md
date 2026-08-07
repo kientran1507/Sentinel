@@ -12,4 +12,4 @@ This document will describe how to deploy Sentinel with Docker and Docker Compos
 
 ## Status
 
-Draft placeholder for Docker deployment instructions.
+Planned for a later milestone.

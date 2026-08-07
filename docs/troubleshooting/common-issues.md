@@ -12,4 +12,4 @@ This document will collect the most common Sentinel issues and the steps to diag
 
 ## Status
 
-Draft placeholder for troubleshooting notes.
+Planned for a later milestone.

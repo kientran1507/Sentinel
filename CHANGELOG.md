@@ -2,7 +2,11 @@
 
 ## v0.1.0
 
-- Initial repository
-- Documentation structure
+### Added
+
+- Repository structure
 - GitHub project
-- Initial architecture
+- Architecture documentation
+- Draw.io diagrams
+- Docker/Kubernetes scaffolding
+- Development documentation

@@ -12,4 +12,4 @@ This document will describe the major building blocks of Sentinel and the role e
 
 ## Status
 
-Draft placeholder for component-level documentation.
+Planned for a later milestone.
