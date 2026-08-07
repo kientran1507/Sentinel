@@ -4,7 +4,7 @@ Sentinel is a self-hosted network and infrastructure monitoring platform designe
 
 ## Architecture
 
-![Architecture](docs/images/architecture.svg)
+![Architecture](docs/images/architecture.png)
 
 The architecture overview describes the intended system boundaries, service responsibilities, and data flow for the platform.
 
