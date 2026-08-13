@@ -93,6 +93,9 @@ def main(argv=None):
             arp_devices = arp_scanner.scan()
         except RuntimeError as e:
             print(f"ARP scanner error: {e}")
+        except PermissionError as e:
+            # Surface permission errors as a clear message but continue
+            print(f"ARP permission error: {e}")
 
     # Merge results: prefer ARP data where present (MAC), otherwise use ICMP
     by_ip = {}
