@@ -10,6 +10,23 @@ Features
 - Configurable target (CIDR or iterable of IPs)
 - Basic logging and error handling
 
+Configuration
+-------------
+
+`ICMPScanner` accepts optional runtime configuration for scan performance:
+
+- `concurrency` (int): Maximum number of concurrent ping probes. Default: 20.
+- `ping_timeout` (int): Per-probe timeout in seconds passed to the `ping` utility. Default: 1.
+
+Example with configuration:
+
+```py
+from services.discovery.scanner import ICMPScanner
+
+scanner = ICMPScanner('192.168.1.0/24', concurrency=50, ping_timeout=2)
+devices = scanner.scan()
+```
+
 Usage
 -----
 

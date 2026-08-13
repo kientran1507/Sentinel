@@ -5,6 +5,8 @@ import logging
 import platform
 import shutil
 import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, List, Optional
 
 from .models import DiscoveredDevice
@@ -20,7 +22,7 @@ class ICMPScanner:
     can mock them.
     """
 
-    def __init__(self, target: str | Iterable[str]):
+    def __init__(self, target: str | Iterable[str], *, concurrency: int = 20, ping_timeout: int = 1):
         """Create a scanner.
 
         `target` may be a CIDR like '192.168.1.0/24' or an iterable of IP
@@ -34,6 +36,9 @@ class ICMPScanner:
             self._ips = list(target)
 
         self._ping_cmd = self._detect_ping()
+        # Concurrency and timeout settings
+        self.concurrency = int(concurrency) if concurrency and int(concurrency) > 0 else 1
+        self.ping_timeout = int(ping_timeout)
 
     def _detect_ping(self) -> Optional[str]:
         ping = shutil.which("ping")
@@ -84,21 +89,33 @@ class ICMPScanner:
         ips = self._expand_targets()
         devices: List[DiscoveredDevice] = []
 
-        for ip in ips:
-            try:
-                reachable = self._ping(ip)
-            except Exception as e:
-                logger.error("scan error for %s: %s", ip, e)
-                reachable = False
+        if not ips:
+            logger.info("no targets to scan")
+            return devices
 
-            if reachable:
-                dev = DiscoveredDevice(
-                    ip_address=ip,
-                    mac_address=None,
-                    hostname=None,
-                    discovery_source="icmp",
-                )
-                devices.append(dev)
+        # Use a bounded thread pool to probe hosts concurrently.
+        timeout = self.ping_timeout
+        max_workers = max(1, self.concurrency)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(self._ping, ip, timeout): ip for ip in ips}
+
+            for fut in as_completed(futures):
+                ip = futures[fut]
+                try:
+                    reachable = fut.result()
+                except Exception as e:
+                    logger.error("scan worker error for %s: %s", ip, e)
+                    reachable = False
+
+                if reachable:
+                    dev = DiscoveredDevice(
+                        ip_address=ip,
+                        mac_address=None,
+                        hostname=None,
+                        discovery_source="icmp",
+                    )
+                    devices.append(dev)
 
         logger.info("scan complete: %d hosts discovered", len(devices))
         return devices

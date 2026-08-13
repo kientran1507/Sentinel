@@ -1,5 +1,6 @@
 import subprocess
 import unittest
+import time
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
@@ -50,6 +51,35 @@ class TestICMPScanner(unittest.TestCase):
         devices = scanner.scan()
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].ip_address, "192.0.2.1")
+
+    @patch("services.discovery.scanner.subprocess.run")
+    def test_concurrent_scan_limits(self, mock_run):
+        # Simulate many IPs and make each ping take a small amount of time
+        def side_effect(args, stdout, stderr):
+            time.sleep(0.01)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = side_effect
+        ips = [f"192.0.2.{i}" for i in range(1, 51)]
+        scanner = ICMPScanner(ips, concurrency=10, ping_timeout=1)
+        devices = scanner.scan()
+        # All should be discovered
+        self.assertEqual(len(devices), len(ips))
+
+    @patch("services.discovery.scanner.subprocess.run")
+    def test_ping_timeout_argument(self, mock_run):
+        # Patch platform to predictable value and ensure timeout value is used
+        with patch("services.discovery.scanner.platform.system", return_value="Linux"):
+            def fake_run(args, stdout, stderr):
+                # The timeout value should appear as the '-W' argument followed by '2'
+                self.assertIn("-W", args)
+                self.assertIn("2", args)
+                return MagicMock(returncode=0)
+
+            mock_run.side_effect = fake_run
+            scanner = ICMPScanner(["192.0.2.5"], concurrency=2, ping_timeout=2)
+            devices = scanner.scan()
+            self.assertEqual(len(devices), 1)
 
 
 if __name__ == "__main__":
