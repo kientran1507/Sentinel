@@ -87,6 +87,17 @@ If exact policy thresholds are not yet decided, they should be captured as confi
 
 Discovery runs should be able to combine both methods (ARP preferred for on-link; ICMP used as fallback or complementary method).
 
+Discovery Orchestrator
+----------------------
+
+The Discovery Orchestrator coordinates enabled scanner implementations (ARP
+and ICMP), collects their results, and merges observations into a canonical
+set of normalized devices. It performs deduplication keyed by IP address and
+preserves the most complete information available (e.g., preferring ARP for
+MAC address acquisition). The orchestrator does not perform enrichment or
+persistence; it returns normalized `DiscoveredDevice` objects for downstream
+processing.
+
 ## Device Identification
 
 Identification enriches discovered endpoints with:

@@ -77,6 +77,24 @@ for d in devices:
     print(d.ip_address, d.discovered_at)
 ```
 
+Discovery Orchestrator
+----------------------
+
+`DiscoveryOrchestrator` coordinates multiple scanner implementations (ARP
+and ICMP), runs them according to configuration, and merges results into a
+single normalized set of `DiscoveredDevice` objects. It performs deduplication
+by IP address and prefers ARP-discovered MAC addresses when both scanners
+report a device.
+
+Example:
+
+```py
+from services.discovery.orchestrator import DiscoveryOrchestrator
+
+orch = DiscoveryOrchestrator('192.168.1.0/24', methods=['arp','icmp'])
+devices = orch.scan()
+```
+
 Testing
 -------
 

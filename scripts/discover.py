@@ -18,6 +18,7 @@ try:
     from services.discovery.scanner import ICMPScanner
     from services.discovery.models import DiscoveredDevice
     from services.discovery.arp_scanner import ARPScanner
+    from services.discovery.orchestrator import DiscoveryOrchestrator
 except ModuleNotFoundError:
     # When running this script directly (python scripts/discover.py) the
     # script directory becomes sys.path[0] which can prevent importing the
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
     from services.discovery.scanner import ICMPScanner
     from services.discovery.models import DiscoveredDevice
     from services.discovery.arp_scanner import ARPScanner
+    from services.discovery.orchestrator import DiscoveryOrchestrator
 
 
 def to_dict(dev: DiscoveredDevice) -> dict:
@@ -70,6 +72,7 @@ def main(argv=None):
     p.add_argument("--method", choices=["icmp", "arp", "both"], default="icmp", help="Discovery method to run")
     p.add_argument("--iface", type=str, default=None, help="Interface to use for ARP (optional)")
     p.add_argument("--arp-timeout", type=int, default=2, help="ARP probe timeout in seconds")
+    p.add_argument("--orchestrator", action="store_true", help="Use DiscoveryOrchestrator to coordinate scanners and merge results")
     args = p.parse_args(argv)
 
     target = args.target
@@ -80,36 +83,45 @@ def main(argv=None):
         ips = target
 
     devices = []
-    icmp_devices = []
-    arp_devices = []
 
-    if args.method in ("icmp", "both"):
-        icmp_scanner = ICMPScanner(ips, concurrency=args.concurrency, ping_timeout=args.timeout)
-        icmp_devices = icmp_scanner.scan()
+    if args.orchestrator:
+        # Use the DiscoveryOrchestrator to coordinate scanners
+        methods = [args.method] if args.method in ("icmp", "arp") else ["arp", "icmp"]
+        icmp_kwargs = {"concurrency": args.concurrency, "ping_timeout": args.timeout}
+        arp_kwargs = {"timeout": args.arp_timeout, "iface": args.iface}
+        orch = DiscoveryOrchestrator(ips, methods=methods, icmp_kwargs=icmp_kwargs, arp_kwargs=arp_kwargs)
+        devices = orch.scan()
+    else:
+        icmp_devices = []
+        arp_devices = []
 
-    if args.method in ("arp", "both"):
-        arp_scanner = ARPScanner(ips, timeout=args.arp_timeout, iface=args.iface)
-        try:
-            arp_devices = arp_scanner.scan()
-        except RuntimeError as e:
-            print(f"ARP scanner error: {e}")
-        except PermissionError as e:
-            # Surface permission errors as a clear message but continue
-            print(f"ARP permission error: {e}")
+        if args.method in ("icmp", "both"):
+            icmp_scanner = ICMPScanner(ips, concurrency=args.concurrency, ping_timeout=args.timeout)
+            icmp_devices = icmp_scanner.scan()
 
-    # Merge results: prefer ARP data where present (MAC), otherwise use ICMP
-    by_ip = {}
-    for d in icmp_devices:
-        by_ip[d.ip_address] = d
-    for d in arp_devices:
-        existing = by_ip.get(d.ip_address)
-        if existing:
-            existing.mac_address = d.mac_address or existing.mac_address
-            existing.discovery_source = d.discovery_source or existing.discovery_source
-        else:
+        if args.method in ("arp", "both"):
+            arp_scanner = ARPScanner(ips, timeout=args.arp_timeout, iface=args.iface)
+            try:
+                arp_devices = arp_scanner.scan()
+            except RuntimeError as e:
+                print(f"ARP scanner error: {e}")
+            except PermissionError as e:
+                # Surface permission errors as a clear message but continue
+                print(f"ARP permission error: {e}")
+
+        # Merge results: prefer ARP data where present (MAC), otherwise use ICMP
+        by_ip = {}
+        for d in icmp_devices:
             by_ip[d.ip_address] = d
+        for d in arp_devices:
+            existing = by_ip.get(d.ip_address)
+            if existing:
+                existing.mac_address = d.mac_address or existing.mac_address
+                existing.discovery_source = d.discovery_source or existing.discovery_source
+            else:
+                by_ip[d.ip_address] = d
 
-    devices = list(by_ip.values())
+        devices = list(by_ip.values())
 
     if args.csv:
         write_csv(args.csv, devices)
