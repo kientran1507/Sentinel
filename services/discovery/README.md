@@ -10,6 +10,20 @@ Features
 - Configurable target (CIDR or iterable of IPs)
 - Basic logging and error handling
 
+ARP Discovery (Phase 2)
+-----------------------
+
+This directory also includes an `ARPScanner` implementation for on-link
+discovery that uses ARP probes to learn IP↔MAC mappings. ARP discovery is
+complementary to ICMP discovery: ARP is limited to on-link devices but
+provides MAC addresses which are useful for vendor lookup and device
+identification.
+
+Key points:
+- `ARPScanner` returns `DiscoveredDevice` objects with `discovery_source = "arp"`.
+- `hostname` is `None` in this phase; MAC address is populated when discovered.
+- `scapy` is used to perform ARP requests; see below for permissions.
+
 Configuration
 -------------
 
@@ -26,6 +40,27 @@ from services.discovery.scanner import ICMPScanner
 scanner = ICMPScanner('192.168.1.0/24', concurrency=50, ping_timeout=2)
 devices = scanner.scan()
 ```
+
+ARP usage
+---------
+
+```py
+from services.discovery.arp_scanner import ARPScanner
+
+scanner = ARPScanner('192.168.1.0/24', timeout=2)
+devices = scanner.scan()
+for d in devices:
+  print(d.ip_address, d.mac_address)
+```
+
+Dependencies & Permissions
+--------------------------
+
+ARP scans use the `scapy` Python library which may require elevated
+privileges to send link-layer packets. On Linux/Raspberry Pi run the
+scanner as root or with appropriate capabilities (e.g., `CAP_NET_RAW`). If
+scapy is not installed the `ARPScanner` will raise a clear error indicating
+the missing dependency.
 
 Usage
 -----

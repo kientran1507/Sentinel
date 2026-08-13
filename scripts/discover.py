@@ -17,6 +17,7 @@ from typing import List
 try:
     from services.discovery.scanner import ICMPScanner
     from services.discovery.models import DiscoveredDevice
+    from services.discovery.arp_scanner import ARPScanner
 except ModuleNotFoundError:
     # When running this script directly (python scripts/discover.py) the
     # script directory becomes sys.path[0] which can prevent importing the
@@ -29,6 +30,7 @@ except ModuleNotFoundError:
     sys.path.insert(0, str(repo_root))
     from services.discovery.scanner import ICMPScanner
     from services.discovery.models import DiscoveredDevice
+    from services.discovery.arp_scanner import ARPScanner
 
 
 def to_dict(dev: DiscoveredDevice) -> dict:
@@ -65,17 +67,49 @@ def main(argv=None):
     p.add_argument("--concurrency", type=int, default=20, help="Max concurrent probes")
     p.add_argument("--timeout", type=int, default=1, help="Per-probe timeout in seconds")
     p.add_argument("--csv", type=str, help="Write results to CSV file")
+    p.add_argument("--method", choices=["icmp", "arp", "both"], default="icmp", help="Discovery method to run")
+    p.add_argument("--iface", type=str, default=None, help="Interface to use for ARP (optional)")
+    p.add_argument("--arp-timeout", type=int, default=2, help="ARP probe timeout in seconds")
     args = p.parse_args(argv)
 
     target = args.target
     # Allow comma-separated IP list on CLI
     if "," in target:
         ips = [t.strip() for t in target.split(",") if t.strip()]
-        scanner = ICMPScanner(ips, concurrency=args.concurrency, ping_timeout=args.timeout)
     else:
-        scanner = ICMPScanner(target, concurrency=args.concurrency, ping_timeout=args.timeout)
+        ips = target
 
-    devices = scanner.scan()
+    devices = []
+    icmp_devices = []
+    arp_devices = []
+
+    if args.method in ("icmp", "both"):
+        icmp_scanner = ICMPScanner(ips, concurrency=args.concurrency, ping_timeout=args.timeout)
+        icmp_devices = icmp_scanner.scan()
+
+    if args.method in ("arp", "both"):
+        arp_scanner = ARPScanner(ips, timeout=args.arp_timeout, iface=args.iface)
+        try:
+            arp_devices = arp_scanner.scan()
+        except RuntimeError as e:
+            print(f"ARP scanner error: {e}")
+        except PermissionError as e:
+            # Surface permission errors as a clear message but continue
+            print(f"ARP permission error: {e}")
+
+    # Merge results: prefer ARP data where present (MAC), otherwise use ICMP
+    by_ip = {}
+    for d in icmp_devices:
+        by_ip[d.ip_address] = d
+    for d in arp_devices:
+        existing = by_ip.get(d.ip_address)
+        if existing:
+            existing.mac_address = d.mac_address or existing.mac_address
+            existing.discovery_source = d.discovery_source or existing.discovery_source
+        else:
+            by_ip[d.ip_address] = d
+
+    devices = list(by_ip.values())
 
     if args.csv:
         write_csv(args.csv, devices)
