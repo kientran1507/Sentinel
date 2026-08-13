@@ -5,6 +5,7 @@ This document describes the major building blocks of Sentinel and the role each 
 ## Core Subsystems
 
 - **Discovery Service**: Detects and maintains a canonical inventory of devices on configured networks. See the device discovery design document: [Device Discovery](../monitoring/device-discovery.md).
+ - **Discovery Service**: Detects and maintains a canonical inventory of devices on configured networks. The `Discovery Orchestrator` coordinates scanner implementations (ARP/ICMP) and merges results into normalized device records. See the device discovery design document: [Device Discovery](../monitoring/device-discovery.md).
 - **Monitoring Service**: Schedules and executes health checks and metric collection for inventory items.
 - **Alert Engine**: Evaluates telemetry and state against configured rules and emits alerts.
 - **Notification Service**: Delivers alerts to external channels (email, webhook, etc.).
