@@ -14,8 +14,21 @@ import csv
 import sys
 from typing import List
 
-from services.discovery.scanner import ICMPScanner
-from services.discovery.models import DiscoveredDevice
+try:
+    from services.discovery.scanner import ICMPScanner
+    from services.discovery.models import DiscoveredDevice
+except ModuleNotFoundError:
+    # When running this script directly (python scripts/discover.py) the
+    # script directory becomes sys.path[0] which can prevent importing the
+    # top-level `services` package in editable installs. As a fallback,
+    # add the repository root to sys.path so imports work when executed
+    # from the scripts folder.
+    import pathlib
+
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from services.discovery.scanner import ICMPScanner
+    from services.discovery.models import DiscoveredDevice
 
 
 def to_dict(dev: DiscoveredDevice) -> dict:
