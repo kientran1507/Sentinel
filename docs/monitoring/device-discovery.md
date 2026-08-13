@@ -98,6 +98,14 @@ MAC address acquisition). The orchestrator does not perform enrichment or
 persistence; it returns normalized `DiscoveredDevice` objects for downstream
 processing.
 
+Enrichment: Hostname Resolution
+------------------------------
+
+Hostname resolution is an enrichment step performed after discovery. The
+current implementation uses reverse DNS PTR lookups (via the standard
+library) to populate `DiscoveredDevice.hostname`. Lookup failures are
+non-fatal and will leave `hostname` as `None`.
+
 ## Device Identification
 
 Identification enriches discovered endpoints with:

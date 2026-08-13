@@ -95,6 +95,23 @@ orch = DiscoveryOrchestrator('192.168.1.0/24', methods=['arp','icmp'])
 devices = orch.scan()
 ```
 
+Hostname Resolution
+-------------------
+
+`HostnameResolver` performs reverse DNS (PTR) lookups to enrich
+`DiscoveredDevice.hostname`. It does not perform mDNS/NetBIOS/SMB lookups
+and is intended as a lightweight enrichment step. Failures during hostname
+lookup do not affect discovery results.
+
+Example:
+
+```py
+from services.discovery.hostname_resolver import HostnameResolver
+
+resolver = HostnameResolver(timeout=1.0)
+enriched = resolver.resolve_all(devices)
+```
+
 Testing
 -------
 
