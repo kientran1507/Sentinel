@@ -98,10 +98,18 @@ devices = orch.scan()
 Hostname Resolution
 -------------------
 
-`HostnameResolver` performs reverse DNS (PTR) lookups to enrich
-`DiscoveredDevice.hostname`. It does not perform mDNS/NetBIOS/SMB lookups
-and is intended as a lightweight enrichment step. Failures during hostname
-lookup do not affect discovery results.
+`HostnameResolver` enriches `DiscoveredDevice.hostname` without changing the
+discovery/orchestrator merge path. It preserves existing valid hostnames and
+tries bounded lookups in this order:
+
+1. Reverse DNS / PTR via `socket.gethostbyaddr`
+2. NetBIOS via `nbtstat -A <ip>` on Windows
+3. mDNS via `zeroconf`
+4. LLMNR placeholder hook, currently optional/no-op
+
+Reverse DNS results that are empty or equal to the IP address are treated as
+"not found". NetBIOS, mDNS, and LLMNR failures are non-fatal; unresolved
+devices keep `hostname` as `None`.
 
 Example:
 
@@ -112,13 +120,44 @@ resolver = HostnameResolver(timeout=1.0)
 enriched = resolver.resolve_all(devices)
 ```
 
+Example output:
+
+```json
+[
+  {
+    "ip_address": "192.168.2.80",
+    "mac_address": "AA:BB:CC:DD:EE:80",
+    "hostname": "raspberrypi.local",
+    "discovery_source": "arp,icmp"
+  },
+  {
+    "ip_address": "192.168.2.100",
+    "mac_address": "AA:BB:CC:DD:EE:100",
+    "hostname": null,
+    "discovery_source": "arp,icmp"
+  }
+]
+```
+
+For per-mechanism diagnostics, use the development helper:
+
+```bash
+python scripts/test_hostname_resolution.py 192.168.2.12
+python scripts/test_hostname_resolution.py --network 192.168.2.0/24
+```
+
+The diagnostic output reports PTR, NetBIOS, mDNS, and LLMNR states for each
+IP. mDNS results are collected into a shared IP-to-hostname cache per resolver
+instance so a network run does not create a new Zeroconf browser for every
+device.
+
 Testing
 -------
 
 Unit tests live in `tests/` and use mocks to avoid network access. Run:
 
 ```bash
-python -m unittest discover -v
+python -m unittest discover -s tests -v
 ```
 
 Limitations
