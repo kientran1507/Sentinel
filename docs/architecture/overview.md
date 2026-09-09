@@ -1,94 +1,66 @@
 # Sentinel Overview
 
-Sentinel is an intended self-hosted platform for network and infrastructure monitoring in homelab and small-to-medium environments. It is designed to provide a unified architecture for discovery, health checks, metric collection, alerting, and operational visibility.
+Sentinel is a self-hosted Python system for LAN discovery, ZTE client monitoring, presence transitions, alerting, and authorized operator commands. The implemented runtime is intentionally lightweight and in-process; REST APIs, a database, dashboard, and metrics backend are future extensions rather than current services.
 
-Sentinel exists to reduce operational complexity created by fragmented monitoring stacks. Instead of combining unrelated tools for inventory, checks, alerts, and dashboards, Sentinel defines a single architecture with clear service boundaries and a consistent data lifecycle.
+## Implemented Runtime
 
-The platform is designed to address the following problems:
+- LAN device discovery and hostname enrichment
+- Continuous ZTE H3601P client monitoring
+- Online/offline/recovery transition detection
+- Alert routing to Discord and Telegram
+- Authorized operator commands through Discord and Telegram
 
-- Limited visibility into device and service health across local infrastructure
-- Manual, inconsistent device inventory and monitoring onboarding
-- Delayed fault detection due to disconnected telemetry and alert pipelines
-- Operational overhead from managing multiple standalone monitoring tools
+## Architecture
 
-Target users include homelab operators, platform engineers, DevOps teams, and small IT administrators who need practical self-hosted observability without heavyweight platform requirements.
-
-Design philosophy:
-
-- Self-hosted by default
-- Modular service boundaries
-- Lightweight deployment footprint
-- Infrastructure portability across Docker and Kubernetes
-- Incremental extensibility without architectural rewrites
-
-# System Goals
-
-- Centralized infrastructure monitoring
-- Device discovery and inventory awareness
-- Real-time health and metric observation
-- Actionable alerting and notification routing
-- Lightweight deployment for constrained environments
-- Horizontal scalability as workloads grow
-- Extensibility for future integrations and modules
-- Self-hosted architecture with operator control
-
-# High-Level Architecture
-
-Sentinel is organized into independently scoped subsystems with explicit responsibilities.
-
-| Subsystem | Responsibility |
+| Component | Responsibility |
 | --- | --- |
-| Dashboard | Presents infrastructure status, active alerts, and monitoring views to users. |
-| REST API | Provides a stable control and query surface for UI and external integrations. |
-| Discovery Service | Detects and maintains monitored device inventory. |
-| Monitoring Service | Executes health checks and metric collection workflows. |
-| Alert Engine | Evaluates monitoring data against alert rules and emits alert events. |
-| Notification Service | Delivers alert notifications through configured channels. |
-| Database | Stores device inventory, telemetry history, alert state, and configuration metadata. |
-| Kubernetes/Docker Infrastructure | Hosts runtime services and provides orchestration and operational primitives. |
-
-At architecture level, the Dashboard communicates with the REST API, which coordinates Sentinel Core workflows. Core orchestrates Discovery, Monitoring, Alert Engine, and Database interactions, while Notification Service is triggered by alert events.
-
-# Data Flow
-
-Sentinel follows a deterministic monitoring-to-alert lifecycle:
-
-1. Discovery Service identifies devices and updates inventory state.
-2. Monitoring Service schedules and runs checks for discovered devices.
-3. Collected telemetry and state snapshots are persisted to the Database.
-4. Alert Engine evaluates current and historical data against defined conditions.
-5. Notification Service publishes alert outcomes to configured destinations.
-6. Dashboard retrieves system state through the REST API for operational visibility.
+| `DiscoveryOrchestrator` | Coordinates `ARPScanner` and `ICMPScanner` and merges `DiscoveredDevice` records. |
+| `HostnameResolver` | Enriches discovered records with bounded hostname lookups. |
+| `DeviceRegistry` | Holds canonical `ZTEDevice` state for the runtime. |
+| `ZTECollector` / `ZTEMonitor` | Collects router clients and polls at a configured interval. |
+| `PresenceTracker` | Applies state transitions and offline threshold/debouncing. |
+| `EventBus` | Delivers typed events to independent subscribers. |
+| `AlertEngine` | Maps events to typed alerts and optional history/notifications. |
+| `NotificationManager` | Isolates Discord webhook and Telegram provider failures. |
+| `CommandHandler` | Authorizes and serves `/help`, `/devices`, `/status`, and `/alerts`. |
+| `CommandService` | Runs Telegram polling and Discord Gateway adapters. |
 
 ```mermaid
-flowchart LR
-	A[Device Discovery] --> B[Monitoring]
-	B --> C[Database]
-	C --> D[Alert Engine]
-	D --> E[Notifications]
-	C --> F[Dashboard]
-	E --> F
+flowchart TB
+    A[Discovery] --> B[DeviceRegistry]
+    B --> C[PresenceTracker]
+    C --> D[DeviceEvent]
+    D --> E[EventBus]
+    E --> F[AlertEngine]
+    F --> G[AlertHistory]
+    F --> H[NotificationManager]
+    H --> I[Discord webhook]
+    H --> J[Telegram Bot API]
+    B --> K[CommandHandler]
+    G --> K
+    K --> L[Discord slash commands]
+    K --> M[Telegram polling]
 ```
 
-# Deployment Model
+All components share one runtime object graph in `sentinel start`. Command renderers read structured command data and do not trigger scans.
 
-Sentinel is intended to support multiple self-hosted deployment targets:
+## Data Flow
 
-- Docker Compose for single-host deployments
-- Kubernetes (K3s) for lightweight clustered operation
-- Raspberry Pi for low-power edge or homelab installations
-- Linux servers for standard on-premises hosting
+1. Discovery or the ZTE collector produces device snapshots.
+2. `DeviceRegistry` and `PresenceTracker` update shared state.
+3. Transition events are published through `EventBus`.
+4. `AlertEngine` creates alerts and records them in bounded `AlertHistory`.
+5. `NotificationManager` sends independently to Discord and Telegram.
+6. `CommandHandler` reads the same registry/history for remote commands.
 
-These options are design targets and may be adopted incrementally as the system matures.
+## Configuration
 
-# Future Expansion
+Router and notification/command credentials are environment-based. See [.env.example](../../.env.example) and [Commands](../commands.md). Secrets are not logged or committed. Discord webhook and Discord bot token have separate roles.
 
-The architecture is intentionally open for future capability modules, including:
+## Deployment Status
 
-- Prometheus integration
-- Grafana dashboards
-- SNMP monitoring
-- Agent-based monitoring
-- Plugin architecture for service extensions
+The supported development workflow is a Python virtual environment and one integrated process. Docker, K3s, and Raspberry Pi deployment are deployment targets, but complete packaged manifests and persistent storage are not currently implemented.
 
-Future modules are planned as architectural extensions, not assumptions about current implementation status.
+## Future Work
+
+REST API, database persistence, dashboards, Prometheus/Grafana integration, SNMP, and distributed discovery remain future extensions.

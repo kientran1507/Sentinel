@@ -1,15 +1,5 @@
 # Docker Deployment
 
-This document will describe how to deploy Sentinel with Docker and Docker Compose.
+Docker deployment is a future packaging target. The repository does not currently provide a complete Sentinel image, Compose service, persistent volume contract, or production startup manifest.
 
-## Planned Sections
-
-- Image and container layout
-- Environment variables
-- Volume mounts and persistence
-- Container startup order
-- Updating and rollback strategy
-
-## Status
-
-Planned for a later milestone.
+For local development, use the Python virtual environment documented in the [README](../../README.md). If packaging Sentinel in Docker, keep the integrated `sentinel start` process as the owner of the shared `DeviceRegistry`, `PresenceTracker`, `EventBus`, `AlertEngine`, `AlertHistory`, and command service. Mount configuration through environment variables or a secret store; never bake `.env` into an image.

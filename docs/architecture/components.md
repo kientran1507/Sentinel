@@ -1,24 +1,28 @@
 # Architecture Components
 
-This document describes the major building blocks of Sentinel and the role each one plays in the platform. Each subsystem is intended to be modular, with well-defined responsibilities and communication contracts.
+This document describes the components that currently exist in the Python runtime.
 
-## Core Subsystems
+## Discovery and Monitoring
 
-- **Discovery Service**: Detects and maintains a canonical inventory of devices on configured networks. See the device discovery design document: [Device Discovery](../monitoring/device-discovery.md).
- - **Discovery Service**: Detects and maintains a canonical inventory of devices on configured networks. The `Discovery Orchestrator` coordinates scanner implementations (ARP/ICMP) and merges results into normalized device records. See the device discovery design document: [Device Discovery](../monitoring/device-discovery.md).
- - **Discovery Service**: Detects and maintains a canonical inventory of devices on configured networks. The `Discovery Orchestrator` coordinates scanner implementations (ARP/ICMP) and merges results into normalized device records. A separate `HostnameResolver` enrichment component performs reverse-DNS lookups to populate device hostnames. See the device discovery design document: [Device Discovery](../monitoring/device-discovery.md).
-- **Monitoring Service**: Schedules and executes health checks and metric collection for inventory items.
-- **Alert Engine**: Evaluates telemetry and state against configured rules and emits alerts.
-- **Notification Service**: Delivers alerts to external channels (email, webhook, etc.).
-- **REST API**: Provides control and query endpoints for UI and external integrations.
-- **Dashboard**: User-facing interface for visualization and operational workflows.
-- **Database**: Stores device inventory, telemetry, alert state, and configuration metadata.
+- **`DiscoveryOrchestrator`** runs ARP/ICMP scanners and merges results by IP.
+- **`HostnameResolver`** performs bounded PTR, NetBIOS, mDNS, and LLMNR enrichment.
+- **`DeviceRegistry`** is the canonical in-memory store of `ZTEDevice` records.
+- **`ZTECollector`** authenticates to the ZTE H3601P and merges DHCP/mesh clients.
+- **`ZTEMonitor`** polls the collector and owns the monitoring loop.
+- **`PresenceTracker`** detects discovery, offline, and recovery transitions.
 
-## Integration and Contracts
+## Event, Alert, and Command Components
 
-- Subsystems communicate through the REST API and the shared Database. The Discovery Service is the authoritative producer of device inventory; Monitoring depends on that inventory to schedule checks.
-- Services should be resilient to partial failure of peers (e.g., temporary Database outage) and operate with clear retry and backoff policies.
+- **`EventBus`** provides isolated event subscribers, optionally asynchronously.
+- **`AlertEngine`** applies event rules and creates `Alert` objects.
+- **`AlertHistory`** keeps a bounded in-memory recent-alert list.
+- **`NotificationManager`** routes independently to Discord webhook and Telegram providers.
+- **`CommandHandler`** provides shared authorization, parsing, rate limiting, and command semantics.
+- **`CommandService`** hosts Telegram long polling and Discord Gateway slash commands.
+- **Renderers** format structured responses as Discord embeds or Telegram escaped HTML.
 
-## Discovery Service (brief)
+## Boundaries
 
-The Discovery Service is responsible for active network scanning, device identification, and persisting normalized device records. The full design is captured in [docs/monitoring/device-discovery.md](../monitoring/device-discovery.md).
+Discovery and monitoring do not know about Discord or Telegram. The event bus separates state transitions from alert processing. Notification failures are isolated from monitoring. Command adapters translate platform interactions into calls to the same `CommandHandler`.
+
+There is currently no REST API, database, dashboard, or persistent queue. The registry and alert history exist only for the lifetime of the integrated runtime.

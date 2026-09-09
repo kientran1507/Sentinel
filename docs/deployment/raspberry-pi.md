@@ -1,15 +1,5 @@
 # Raspberry Pi Deployment
 
-This document will describe how to deploy Sentinel on a Raspberry Pi or similar low-power ARM device.
+Raspberry Pi is a supported design target, not a packaged deployment in the current repository. The current practical workflow is to install Python and the project dependencies in a virtual environment, configure `.env`, and run the integrated `sentinel start` process.
 
-## Planned Sections
-
-- Hardware requirements
-- Operating system setup
-- Docker installation
-- Service configuration
-- Persistence and backups
-
-## Status
-
-Planned for a later milestone.
+ARP scanning may require `CAP_NET_RAW` or equivalent privileges. Keep router credentials, bot tokens, webhook URLs, and allowlists outside source control. Persistent backups are not applicable yet because the registry and alert history are in memory.

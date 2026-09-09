@@ -22,13 +22,19 @@ Set these variables in `.env` (see `.env.example`):
 
 ```text
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+DISCORD_BOT_TOKEN=<discord-bot-token>
+DISCORD_ALLOWED_USER_IDS=123456789012345678
+DISCORD_GUILD_ID=<optional-guild-id>
 TELEGRAM_BOT_TOKEN=123456:token
 TELEGRAM_CHAT_ID=123456789
+TELEGRAM_ALLOWED_USER_IDS=123456789
 ```
 
 Discord messages use an embed. Telegram messages use the Bot API. Both include alert type, severity, hostname, IP, MAC, event time, and a readable description. Credentials are read from the environment and are never written to logs.
 
 `NotificationManager` continues with the next provider when one provider times out, rejects a request, or has invalid configuration. Zero configured providers is valid. External API calls are covered by mocked tests and are not made by the automated suite.
+
+Discord webhook delivery is outbound only. Discord bot commands use `DISCORD_BOT_TOKEN` and native slash commands. Telegram uses its bot token for both outbound messages and inbound long polling. Command allowlists are numeric user IDs; missing or malformed values reject commands.
 
 ## CLI
 

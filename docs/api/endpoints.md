@@ -1,15 +1,7 @@
 # API Endpoints
 
-This document will describe the Sentinel API surface, including available endpoints, request formats, and response behavior.
+Sentinel does not currently expose a REST API. The implemented operator interface is the shared command handler exposed through Telegram Bot API polling and Discord native slash commands.
 
-## Planned Sections
+## Future API Surface
 
-- Authentication and authorization
-- Health endpoints
-- Discovery endpoints
-- Metrics endpoints
-- Alerts endpoints
-
-## Status
-
-Planned for a later milestone.
+When a REST API is introduced, it should expose read-only equivalents of device status, alert history, and runtime health without bypassing `DeviceRegistry`, `AlertHistory`, or command authorization policy. No endpoint names or authentication contract are committed yet.

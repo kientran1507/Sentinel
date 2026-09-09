@@ -1,15 +1,21 @@
 # Roadmap
 
-This document will describe the planned development stages for Sentinel and the features targeted for future releases.
+## Implemented
 
-## Planned Sections
+- ICMP and ARP discovery with orchestration and hostname resolution
+- ZTE H3601P collection and continuous presence monitoring
+- Typed events, event bus, alert rules, bounded history, and provider-isolated notifications
+- Discord webhook and Telegram outbound notifications
+- Shared authorized command handler with Telegram polling and Discord slash commands
+- Shared integrated runtime and platform-specific command renderers
 
-- MVP scope
-- Short-term milestones
-- Feature backlog
-- Technical debt and follow-up work
-- Release planning
+## Next candidates
 
-## Status
+- Persistent device and alert storage
+- REST API and dashboard
+- Metrics collection/export and historical retention
+- Production Docker Compose/K3s manifests
+- Command pagination or refresh controls if device volume requires them
+- Additional discovery and monitoring providers
 
-Planned for a later milestone.
+These are future candidates, not current runtime capabilities.

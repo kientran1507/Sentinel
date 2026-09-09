@@ -15,6 +15,24 @@ Thanks for contributing to Sentinel.
 3. Verify links, images, and formatting.
 4. Open a pull request with a clear summary.
 
+## Local Setup and Tests
+
+Use the project virtual environment and editable install:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
+
+Run the complete unittest suite with:
+
+```powershell
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+The repository currently uses `unittest`; tests mock external Discord and Telegram APIs. Do not put `.env` or provider credentials in commits. Changes to discovery, monitoring, alerts, commands, or renderers should update the corresponding documentation.
+
 ## Documentation Expectations
 
 - Prefer concise, technical Markdown.
