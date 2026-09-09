@@ -22,7 +22,7 @@ The architecture overview describes the intended system boundaries, service resp
 - ✅ Foundation Complete (v0.1)
 - 🚧 Device Discovery (v0.2)
 - ⬜ Monitoring
-- ⬜ Alerting
+- ✅ Alerting and notifications
 - ⬜ Dashboard
 
 ## Project Goals

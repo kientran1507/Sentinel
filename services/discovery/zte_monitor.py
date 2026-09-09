@@ -6,6 +6,7 @@ import time
 from typing import Callable, List, Optional
 
 from services.discovery.models import DeviceEvent
+from services.discovery.event_bus import EventBus
 from services.discovery.zte_h3601p_client import ZTEH3601PClient, _sanitize_log_message
 from services.discovery.zte_collector import ZTECollector
 from services.discovery.device_registry import DeviceRegistry
@@ -26,6 +27,7 @@ class ZTEMonitor:
         registry: Optional[DeviceRegistry] = None,
         presence_tracker: Optional[PresenceTracker] = None,
         on_event: Optional[Callable[[DeviceEvent], None]] = None,
+        event_bus: Optional[EventBus] = None,
     ):
         self.client = client
         self.poll_interval = poll_interval
@@ -36,6 +38,7 @@ class ZTEMonitor:
         self.tracker = presence_tracker or PresenceTracker(self.registry, offline_threshold=offline_threshold)
 
         self.on_event = on_event
+        self.event_bus = event_bus
 
         self.is_running = False
         self._thread: Optional[threading.Thread] = None
@@ -57,6 +60,10 @@ class ZTEMonitor:
                             "Event callback failed: %s",
                             _sanitize_log_message(str(cb_err)),
                         )
+
+            if self.event_bus:
+                for event in events:
+                    self.event_bus.publish(event)
 
             logger.info("ZTE poll cycle completed: %d events generated", len(events))
             return events

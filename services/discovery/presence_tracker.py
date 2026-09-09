@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from services.discovery.models import ZTEDevice, DeviceEvent
+from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
 from services.discovery.device_registry import DeviceRegistry
 
 logger = logging.getLogger(__name__)
@@ -67,12 +67,13 @@ class PresenceTracker:
 
                 events.append(
                     DeviceEvent(
-                        event_type="NEW_DEVICE",
+                        event_type=DeviceEventType.DEVICE_DISCOVERED,
                         mac_address=mac,
                         timestamp=now,
                         device=dev,
                         previous_state=None,
                         current_state=_serialize_device(dev),
+                        metadata={"source": "presence_tracker"},
                     )
                 )
             else:
@@ -95,12 +96,13 @@ class PresenceTracker:
                     changed = True
                     device_events.append(
                         DeviceEvent(
-                            event_type="DEVICE_ONLINE",
+                            event_type=DeviceEventType.DEVICE_RECOVERED,
                             mac_address=mac,
                             timestamp=now,
                             device=existing,
                             previous_state=prev_dict,
                             current_state=_serialize_device(existing),
+                            metadata={"source": "presence_tracker"},
                         )
                     )
 
@@ -112,7 +114,7 @@ class PresenceTracker:
                     changed = True
                     device_events.append(
                         DeviceEvent(
-                            event_type="IP_CHANGED",
+                            event_type=DeviceEventType.IP_CHANGED,
                             mac_address=mac,
                             timestamp=now,
                             device=existing,
@@ -128,7 +130,7 @@ class PresenceTracker:
                     changed = True
                     device_events.append(
                         DeviceEvent(
-                            event_type="HOSTNAME_CHANGED",
+                            event_type=DeviceEventType.HOSTNAME_CHANGED,
                             mac_address=mac,
                             timestamp=now,
                             device=existing,
@@ -144,7 +146,7 @@ class PresenceTracker:
                     changed = True
                     device_events.append(
                         DeviceEvent(
-                            event_type="CONNECTION_CHANGED",
+                            event_type=DeviceEventType.CONNECTION_CHANGED,
                             mac_address=mac,
                             timestamp=now,
                             device=existing,
@@ -187,12 +189,13 @@ class PresenceTracker:
 
                     events.append(
                         DeviceEvent(
-                            event_type="DEVICE_OFFLINE",
+                            event_type=DeviceEventType.DEVICE_OFFLINE,
                             mac_address=mac,
                             timestamp=now,
                             device=existing,
                             previous_state=prev_dict,
                             current_state=_serialize_device(existing),
+                            metadata={"source": "presence_tracker"},
                         )
                     )
 
