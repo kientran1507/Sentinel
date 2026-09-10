@@ -40,6 +40,7 @@ class SQLiteStorage(Storage):
                     self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
                 connection = sqlite3.connect(str(self.database_path), check_same_thread=True)
+                connection.row_factory = sqlite3.Row
                 connection.execute("PRAGMA foreign_keys = ON")
                 connection.execute(
                     """
@@ -50,7 +51,25 @@ class SQLiteStorage(Storage):
                     """
                 )
                 connection.execute(
-                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 1)"
+                    """
+                    CREATE TABLE IF NOT EXISTS devices (
+                        identity_key TEXT PRIMARY KEY,
+                        mac_address TEXT UNIQUE,
+                        ip_address TEXT,
+                        hostname TEXT,
+                        discovery_source TEXT NOT NULL,
+                        first_seen TEXT NOT NULL,
+                        last_seen TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        metadata TEXT NOT NULL DEFAULT '{}'
+                    )
+                    """
+                )
+                connection.execute(
+                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 2)"
+                )
+                connection.execute(
+                    "UPDATE storage_metadata SET schema_version = 2 WHERE id = 1 AND schema_version < 2"
                 )
                 connection.commit()
                 self._connection = connection

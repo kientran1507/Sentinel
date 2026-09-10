@@ -12,14 +12,23 @@ persist devices, events, or alerts.
 - `SQLiteStorage` owns one standard-library `sqlite3` connection per instance,
   creates parent directories for file databases, initializes idempotently, and
   closes safely.
-- A minimal `storage_metadata` table stores schema version `1` for future
-  migration work. No device, event, or alert tables exist yet.
+- A minimal `storage_metadata` table stores schema version `2` for future
+  migration work, and initialization now creates the `devices` table. The
+  `DeviceRepository` persists the current device representation without
+  creating device-event or alert tables.
 - `SENTINEL_DATABASE_PATH` selects the SQLite file. The default is
   `data/sentinel.db` relative to the process working directory.
 
 The foundation is opt-in and is not constructed by `sentinel start` or any
 existing service. Creating a `SQLiteStorage` instance and calling
 `initialize()` is currently the only way to create a database.
+
+`DeviceRepository` accepts the existing `ZTEDevice` and `DiscoveredDevice`
+models and stores durable identity/state fields plus JSON metadata. MAC
+addresses are the preferred identity; MAC-less devices use their IP address.
+If a MAC later appears for a MAC-less record at the same IP, the record is
+promoted to the MAC identity. A MAC-less device that changes IP cannot be
+correlated reliably without another stable identifier.
 
 ## Current State
 
@@ -206,13 +215,15 @@ The proposed implementation sequence is:
 
 1. Phase 1 - Storage abstraction (implemented)
 2. Phase 2 - SQLite implementation (implemented)
-3. Phase 3 - Device persistence
+3. Phase 3 - Device persistence (implemented, repository only)
 4. Phase 4 - Event persistence
 5. Phase 5 - Alert persistence
 6. Phase 6 - Runtime integration
 7. Phase 7 - Historical queries
 8. Phase 8 - Tests and migration/recovery handling
 
-Phases 3 through 8 are future work. Device, event, and alert persistence are
-NOT YET INTEGRATED - FOUNDATION ONLY. Existing discovery, monitoring,
-notification, command, and `sentinel start` behavior remain unchanged.
+Phases 4 through 8 are future work. Device persistence is not integrated into
+the runtime: `sentinel start` does not hydrate or write the database. Event and
+alert persistence, startup hydration, and historical queries are also not
+implemented. Existing discovery, monitoring, notification, command, and
+`sentinel start` behavior remain unchanged.

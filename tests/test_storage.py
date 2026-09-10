@@ -53,7 +53,12 @@ class TestSQLiteStorage(unittest.TestCase):
                 row = connection.execute(
                     "SELECT schema_version FROM storage_metadata WHERE id = 1"
                 ).fetchone()
-            self.assertEqual(row[0], 1)
+            self.assertEqual(row[0], 2)
+            self.assertIsNotNone(
+                connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'devices'"
+                ).fetchone()
+            )
             storage.close()
 
     def test_initialization_is_idempotent_and_close_is_safe(self):
