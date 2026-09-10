@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from threading import RLock
+from typing import Iterator, Optional, Union
+
+from .base import Storage, StorageError, StorageInitializationError, StorageNotInitializedError
+from .config import get_database_path
+
+
+PathLike = Union[str, Path]
+
+
+class SQLiteStorage(Storage):
+    """SQLite storage with explicit instance-owned lifecycle.
+
+    The connection uses sqlite3's default same-thread check. An instance must
+    therefore be initialized, used, and closed by one thread.
+    """
+
+    def __init__(self, database_path: Optional[PathLike] = None):
+        self.database_path = get_database_path() if database_path is None else Path(database_path)
+        self._connection: sqlite3.Connection | None = None
+        self._lock = RLock()
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._connection is not None
+
+    def initialize(self) -> None:
+        with self._lock:
+            if self._connection is not None:
+                return
+
+            connection = None
+            try:
+                if str(self.database_path) != ":memory:":
+                    self.database_path.parent.mkdir(parents=True, exist_ok=True)
+
+                connection = sqlite3.connect(str(self.database_path), check_same_thread=True)
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS storage_metadata (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        schema_version INTEGER NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
+                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 1)"
+                )
+                connection.commit()
+                self._connection = connection
+            except (OSError, sqlite3.Error) as exc:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except sqlite3.Error:
+                        pass
+                self._connection = None
+                raise StorageInitializationError(
+                    f"could not initialize SQLite storage at {self.database_path}"
+                ) from exc
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            connection = self._require_connection()
+            try:
+                yield connection
+            except Exception:
+                connection.rollback()
+                raise
+            else:
+                connection.commit()
+
+    def close(self) -> None:
+        with self._lock:
+            connection = self._connection
+            self._connection = None
+            if connection is None:
+                return
+            try:
+                connection.close()
+            except sqlite3.Error as exc:
+                raise StorageError("could not close SQLite storage") from exc
+
+    def _require_connection(self) -> sqlite3.Connection:
+        if self._connection is None:
+            raise StorageNotInitializedError("SQLite storage has not been initialized")
+        return self._connection

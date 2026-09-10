@@ -1,9 +1,25 @@
 # Persistent Storage Architecture
 
-This document defines the proposed boundary for persistent device, event, and
-alert storage. It is a design document only. The current runtime remains
-unchanged and this branch does not add a database, schema, ORM, migrations, or
-persistent event handling.
+This document defines the boundary for persistent device, event, and alert
+storage. The storage lifecycle abstraction and SQLite foundation are now
+implemented, but the current runtime remains unchanged: this branch does not
+persist devices, events, or alerts.
+
+## Implemented Now
+
+- `Storage` defines lifecycle, transaction, initialization-state, and shutdown
+  boundaries without containing Sentinel domain logic.
+- `SQLiteStorage` owns one standard-library `sqlite3` connection per instance,
+  creates parent directories for file databases, initializes idempotently, and
+  closes safely.
+- A minimal `storage_metadata` table stores schema version `1` for future
+  migration work. No device, event, or alert tables exist yet.
+- `SENTINEL_DATABASE_PATH` selects the SQLite file. The default is
+  `data/sentinel.db` relative to the process working directory.
+
+The foundation is opt-in and is not constructed by `sentinel start` or any
+existing service. Creating a `SQLiteStorage` instance and calling
+`initialize()` is currently the only way to create a database.
 
 ## Current State
 
@@ -166,16 +182,30 @@ The future implementation should:
   enabling persistence in the runtime;
 - make startup and recovery behavior explicit when persisted state is loaded.
 
-No database configuration is currently required. The existing environment
-configuration remains limited to router, notification, and command-provider
-settings until a later implementation phase defines storage configuration.
+`SENTINEL_DATABASE_PATH` is the only storage setting. It follows the existing
+environment-based configuration convention and may point to a file path or
+`:memory:` for tests. The foundation does not load the setting into the
+runtime yet.
+
+### Lifecycle and threading
+
+Each `SQLiteStorage` instance owns its connection. Call `initialize()` before
+using `transaction()` and call `close()` when the owner is finished. Repeated
+initialization and close calls are safe. Transactions commit on successful
+exit and roll back when the body raises an exception.
+
+The connection uses sqlite3's default same-thread check. A storage instance
+must be initialized, used, and closed by one thread; future asynchronous
+adapters should give each worker an explicit storage instance or otherwise
+define connection ownership. There is no global connection or connection
+pool.
 
 ## Implementation Roadmap
 
 The proposed implementation sequence is:
 
-1. Phase 1 - Storage abstraction
-2. Phase 2 - SQLite implementation
+1. Phase 1 - Storage abstraction (implemented)
+2. Phase 2 - SQLite implementation (implemented)
 3. Phase 3 - Device persistence
 4. Phase 4 - Event persistence
 5. Phase 5 - Alert persistence
@@ -183,5 +213,6 @@ The proposed implementation sequence is:
 7. Phase 7 - Historical queries
 8. Phase 8 - Tests and migration/recovery handling
 
-These phases are future work. This preparation branch intentionally implements
-none of them.
+Phases 3 through 8 are future work. Device, event, and alert persistence are
+NOT YET INTEGRATED - FOUNDATION ONLY. Existing discovery, monitoring,
+notification, command, and `sentinel start` behavior remain unchanged.
