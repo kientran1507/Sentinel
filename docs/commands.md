@@ -6,8 +6,12 @@ Sentinel exposes the same authorized command set through Telegram long polling a
 - `/devices` reads the current shared `DeviceRegistry` and displays hostname, IP, MAC, and state. It does not trigger discovery.
 - `/status` reads the shared monitor, registry, and alert-history state.
 - `/alerts` reads the shared bounded `AlertHistory`.
+- `/events` reads persisted `DeviceEvent` history. It accepts a limit and
+	device filter, for example `/events 20` or `/events --device 192.168.2.10`.
+- `/alert-history` reads persisted alerts and accepts limit, device, severity,
+	and alert-type filters. `/alerts` remains the live in-memory alert view.
 
-All commands require a numeric platform user ID in the relevant allowlist. Missing or malformed allowlists fail closed. Each user is limited to 10 commands per 30 seconds. Unknown commands, command arguments, shell commands, and arbitrary code are rejected.
+All commands require a numeric platform user ID in the relevant allowlist. Missing or malformed allowlists fail closed. Each user is limited to 10 commands per 30 seconds. Unknown commands, unsupported arguments, shell commands, and arbitrary code are rejected. Historical queries default to 50 results and reject limits above 500.
 
 ## Discord
 
@@ -18,11 +22,29 @@ Responses use embeds:
 - `/devices` uses compact device fields with `ONLINE`, `OFFLINE`, or `UNKNOWN` indicators.
 - `/status` uses an inline monitoring dashboard.
 - `/alerts` uses severity indicators.
+- `/events` and `/alert_history` use bounded historical embeds and support
+	limit/device/type or severity filters.
 - `/help` groups monitoring and general commands.
 
 ## Telegram
 
 Telegram uses `TELEGRAM_BOT_TOKEN` and Bot API `getUpdates` long polling. Configure `TELEGRAM_ALLOWED_USER_IDS` for authorization. Responses use escaped HTML and compact device entries rather than fixed-width tables. Only one polling consumer should use a bot token at a time; Telegram reports `Conflict: terminated by other getUpdates request` when another consumer is active.
+
+Historical command examples:
+
+```text
+/events
+/events 20
+/events --device 192.168.2.10
+/events --type DEVICE_OFFLINE
+/alert-history
+/alert-history 20
+/alert-history --severity WARNING
+/alert-history --type DEVICE_OFFLINE
+```
+
+Empty history returns a clear message. Query failures are logged internally
+and returned as a safe command error without exposing database details.
 
 ## Runtime state
 

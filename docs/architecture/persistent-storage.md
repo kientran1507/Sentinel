@@ -300,11 +300,12 @@ The proposed implementation sequence is:
 7. Phase 7 - Historical queries (implemented, service only)
 8. Phase 8 - Tests and migration/recovery handling
 
-Phase 8 is future work. Runtime persistence and historical query service are
-active, but startup
-hydration and reconstruction of `PresenceTracker` or `AlertEngine` are not
-implemented. Historical `/alerts` and `/devices` queries, event-history
-commands/API endpoints, retention/cleanup policies, database backup strategy,
-and advanced asynchronous persistence queues are also not implemented.
+Phase 8 is future work. Runtime persistence, the historical query service, and
+the `/events` and `/alert-history` command interfaces are active. The live
+`/alerts`, `/devices`, and `/status` commands retain their existing in-memory
+semantics. Startup hydration and reconstruction of `PresenceTracker` or
+`AlertEngine` are not implemented. Dashboards/API endpoints,
+retention/cleanup policies, database backup strategy, and advanced
+asynchronous persistence queues are also not implemented.
 Existing discovery, monitoring, notification, command, and `sentinel start`
 behavior remain unchanged apart from additive persistence writes.

@@ -122,7 +122,7 @@ class TestCommands(unittest.TestCase):
         client = bot._build_client(FakeDiscord)
         self.assertFalse(client.intents.message_content)
         tree = FakeTree.last
-        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts"})
+        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history"})
         self.assertEqual(set(client.events), {"on_ready", "setup_hook"})
         asyncio.run(client.events["setup_hook"]())
         self.assertTrue(tree.synced_global)

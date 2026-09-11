@@ -33,6 +33,7 @@ from services.storage import (
     PersistingNotificationManager,
     RuntimePersistence,
     SQLiteStorage,
+    HistoryService,
 )
 
 logger = logging.getLogger(__name__)
@@ -241,7 +242,8 @@ def create_runtime() -> SentinelRuntime:
             on_event=persistence.persist_event,
             event_bus=event_bus,
         )
-        handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history)
+        history_service = HistoryService(persistence.events, persistence.alerts)
+        handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history, history_service=history_service)
         command_service = CommandService(handler=handler)
         return SentinelRuntime(
             registry=registry,

@@ -37,7 +37,9 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
             "<b>Monitoring</b>\n\n"
             "/devices — Show discovered devices\n"
             "/status — Show Sentinel status\n"
-            "/alerts — Show recent alerts\n\n"
+            "/alerts — Show recent alerts\n"
+            "/events — Show historical device events\n"
+            "/alert-history — Show historical alerts\n\n"
             "<b>General</b>\n\n/help — Show this help",
             "HTML",
         )
@@ -74,6 +76,35 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
                     f"Time: <code>{html.escape(_format_time(alert['timestamp']))}</code>", "",
                 ])
         return "\n".join(lines).rstrip(), "HTML"
+    if command == "events":
+        lines = ["<b>Historical Sentinel Events</b>", ""]
+        if not data["events"]:
+            lines.append("No historical events found.")
+        else:
+            for event in data["events"][:20]:
+                lines.extend([
+                    f"<b>{html.escape(event['event_type'])}</b>",
+                    f"{html.escape(event['device'])} · IP: <code>{html.escape(event['ip'])}</code>",
+                    f"Time: <code>{html.escape(_format_time(event['timestamp']))}</code>", "",
+                ])
+            if len(data["events"]) > 20:
+                lines.append("Showing the first 20 results.")
+        return "\n".join(lines).rstrip(), "HTML"
+    if command == "alert-history":
+        lines = ["<b>Historical Sentinel Alerts</b>", ""]
+        if not data["alerts"]:
+            lines.append("No historical alerts found.")
+        else:
+            for alert in data["alerts"][:20]:
+                lines.extend([
+                    f"{_severity_icon(alert['severity'])} <b>{html.escape(alert['alert_type'])}</b>",
+                    html.escape(alert["title"]), html.escape(alert["message"]),
+                    f"Device: <code>{html.escape(alert['device'])}</code>",
+                    f"Time: <code>{html.escape(_format_time(alert['timestamp']))}</code>", "",
+                ])
+            if len(data["alerts"]) > 20:
+                lines.append("Showing the first 20 results.")
+        return "\n".join(lines).rstrip(), "HTML"
     return html.escape(response.text), "HTML"
 
 
@@ -90,7 +121,7 @@ def render_discord(response: CommandResponse, discord_module=None):
     command = response.command
     if command == "help":
         embed = discord.Embed(title="Sentinel Commands", color=0x2F80ED)
-        embed.add_field(name="Monitoring", value="`/devices`  Show discovered devices\n`/status`   Show Sentinel status\n`/alerts`   Show recent alerts", inline=False)
+        embed.add_field(name="Monitoring", value="`/devices`  Show discovered devices\n`/status`   Show Sentinel status\n`/alerts`   Show recent alerts\n`/events`   Show historical events\n`/alert-history`   Show historical alerts", inline=False)
         embed.add_field(name="General", value="`/help`     Show this help", inline=False)
         return embed
     if command == "devices":
@@ -123,5 +154,33 @@ def render_discord(response: CommandResponse, discord_module=None):
         else:
             for alert in data["alerts"][:23]:
                 embed.add_field(name=f"{_severity_icon(alert['severity'])} {alert['title']}", value=f"{alert['message']}\nIP: `{alert['ip']}` · MAC: `{alert['mac']}`\nTime: `{_format_time(alert['timestamp'])}`", inline=False)
+        return embed
+    if command == "events":
+        embed = discord.Embed(title="Historical Sentinel Events", color=0x2F80ED)
+        if not data["events"]:
+            embed.description = "No historical events found."
+        else:
+            for event in data["events"][:23]:
+                embed.add_field(
+                    name=f"{event['event_type']} · {event['device']}",
+                    value=f"IP: `{event['ip']}`\nTime: `{_format_time(event['timestamp'])}`",
+                    inline=False,
+                )
+            if len(data["events"]) > 23:
+                embed.set_footer(text="Showing the first 23 results.")
+        return embed
+    if command == "alert-history":
+        embed = discord.Embed(title="Historical Sentinel Alerts", color=0x2F80ED)
+        if not data["alerts"]:
+            embed.description = "No historical alerts found."
+        else:
+            for alert in data["alerts"][:23]:
+                embed.add_field(
+                    name=f"{_severity_icon(alert['severity'])} {alert['alert_type']} · {alert['title']}",
+                    value=f"{alert['message']}\nDevice: `{alert['device']}`\nTime: `{_format_time(alert['timestamp'])}`",
+                    inline=False,
+                )
+            if len(data["alerts"]) > 23:
+                embed.set_footer(text="Showing the first 23 results.")
         return embed
     return None
