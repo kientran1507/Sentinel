@@ -1,9 +1,10 @@
 # Persistent Storage Architecture
 
 This document defines the boundary for persistent device, event, and alert
-storage. The storage lifecycle abstraction and SQLite foundation are now
-implemented, but the current runtime remains unchanged: this branch does not
-automatically persist devices, events, or alerts.
+storage. The storage lifecycle abstraction, repositories, runtime integration,
+and historical query layer are implemented. Runtime commands still read live
+in-memory state; historical queries are available through the application
+service but are not connected to command UX.
 
 ## Implemented Now
 
@@ -19,6 +20,9 @@ automatically persist devices, events, or alerts.
   `AlertRepository` persists immutable alert history.
 - `SENTINEL_DATABASE_PATH` selects the SQLite file. The default is
   `data/sentinel.db` relative to the process working directory.
+- `HistoryService` provides bounded application queries over the event and
+  alert repositories. It supports recent results, device identity, event
+  type, alert severity/type, and UTC time-range filters.
 
 The foundation is now owned by the integrated `sentinel start` runtime. The
 runtime creates one `SQLiteStorage`, initializes it before constructing the
@@ -49,6 +53,33 @@ historical records. Re-saving an alert ID is idempotent, and there is no
 foreign-key dependency on either the current device or event tables. The
 current `Alert` model has no acknowledgement or resolution fields, so no such
 state operations are exposed.
+
+## Historical Queries
+
+`HistoryService` composes `DeviceEventRepository` and `AlertRepository`; it
+does not expose SQL or duplicate persistence logic. Its query methods are:
+
+- `recent_events`, `events_for_device`, `events_by_type`, and `events_between`;
+- `recent_alerts`, `alerts_for_device`, `alerts_by_severity`,
+  `alerts_by_type`, and `alerts_between`.
+
+All list methods default to 50 results and reject limits below 1 or above the
+maximum of 500. Results are newest first and use event ID or alert ID as the
+stable secondary descending key when timestamps are equal. Time ranges use
+UTC timestamps with an inclusive `start` and exclusive `end`; timezone-naive
+inputs are interpreted as UTC, and `start > end` is rejected.
+
+Device filters accept the existing `mac:<normalized-mac>` and `ip:<ip>`
+identities, as well as raw MAC/IP values. IP filters include records whose
+stable identity is MAC-based but whose historical IP matches, so MAC-less and
+later-identified devices remain queryable. Empty repositories return empty
+lists. Queries use repository parameterized SQL with bounded `LIMIT` clauses,
+never raw SQL from the service.
+
+SQLite schema version 5 adds indexes for event timestamp, event identity, and
+event type, plus alert timestamp, alert identity, and alert severity/type.
+These indexes support the bounded historical filters without introducing a
+new database technology or caching layer.
 
 ## Runtime Integration
 
@@ -169,9 +200,9 @@ storage implementation and connect it to these boundaries.
    attempts and outcomes may be recorded as alert delivery metadata when the
    notification layer exposes that information.
 5. `CommandHandler` and future API/dashboard consumers should use a query
-   abstraction for history rather than reaching into database tables. The
-   current command behavior remains in-memory until a later runtime-integration
-   phase.
+  abstraction for history rather than reaching into database tables. The
+  current command behavior remains in-memory until a later command-integration
+  phase.
 
 ## Proposed Entities
 
@@ -266,10 +297,11 @@ The proposed implementation sequence is:
 4. Phase 4 - Event persistence (implemented, repository only)
 5. Phase 5 - Alert persistence (implemented, repository only)
 6. Phase 6 - Runtime integration (implemented, additive writes only)
-7. Phase 7 - Historical queries
+7. Phase 7 - Historical queries (implemented, service only)
 8. Phase 8 - Tests and migration/recovery handling
 
-Phases 7 and 8 are future work. Runtime persistence is active, but startup
+Phase 8 is future work. Runtime persistence and historical query service are
+active, but startup
 hydration and reconstruction of `PresenceTracker` or `AlertEngine` are not
 implemented. Historical `/alerts` and `/devices` queries, event-history
 commands/API endpoints, retention/cleanup policies, database backup strategy,

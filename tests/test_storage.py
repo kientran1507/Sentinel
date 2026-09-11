@@ -53,7 +53,7 @@ class TestSQLiteStorage(unittest.TestCase):
                 row = connection.execute(
                     "SELECT schema_version FROM storage_metadata WHERE id = 1"
                 ).fetchone()
-            self.assertEqual(row[0], 4)
+            self.assertEqual(row[0], 5)
             self.assertIsNotNone(
                 connection.execute(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'devices'"

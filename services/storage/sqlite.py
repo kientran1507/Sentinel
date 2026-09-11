@@ -98,10 +98,34 @@ class SQLiteStorage(Storage):
                     """
                 )
                 connection.execute(
-                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 4)"
+                    "CREATE INDEX IF NOT EXISTS idx_device_events_timestamp "
+                    "ON device_events (timestamp, event_id)"
                 )
                 connection.execute(
-                    "UPDATE storage_metadata SET schema_version = 4 WHERE id = 1 AND schema_version < 4"
+                    "CREATE INDEX IF NOT EXISTS idx_device_events_identity "
+                    "ON device_events (device_identity, timestamp, event_id)"
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_device_events_type "
+                    "ON device_events (event_type, timestamp, event_id)"
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_alerts_timestamp "
+                    "ON alerts (timestamp, alert_id)"
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_alerts_identity "
+                    "ON alerts (device_identity, timestamp, alert_id)"
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_alerts_severity_type "
+                    "ON alerts (severity, alert_type, timestamp, alert_id)"
+                )
+                connection.execute(
+                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 5)"
+                )
+                connection.execute(
+                    "UPDATE storage_metadata SET schema_version = 5 WHERE id = 1 AND schema_version < 5"
                 )
                 connection.commit()
                 self._connection = connection

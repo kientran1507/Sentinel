@@ -46,6 +46,41 @@ class DeviceEventRepository:
     def list(self) -> list[DeviceEvent]:
         return self._list("SELECT * FROM device_events ORDER BY timestamp ASC, event_id ASC")
 
+    def query(
+        self,
+        *,
+        limit: int,
+        device_identity: Optional[str] = None,
+        event_type: Optional[DeviceEventType | str] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> list[DeviceEvent]:
+        clauses = []
+        parameters: list[Any] = []
+        if device_identity:
+            if device_identity.startswith("ip:"):
+                ip_address = device_identity[3:]
+                clauses.append("(device_identity = ? OR ip_address = ?)")
+                parameters.extend((device_identity, ip_address))
+            else:
+                clauses.append("device_identity = ?")
+                parameters.append(device_identity)
+        if event_type is not None:
+            clauses.append("event_type = ?")
+            parameters.append(self._event_type_value(event_type))
+        if start is not None:
+            clauses.append("timestamp >= ?")
+            parameters.append(self._format_timestamp(start))
+        if end is not None:
+            clauses.append("timestamp < ?")
+            parameters.append(self._format_timestamp(end))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        return self._list(
+            "SELECT * FROM device_events" + where +
+            " ORDER BY timestamp DESC, event_id DESC LIMIT ?",
+            tuple(parameters) + (limit,),
+        )
+
     def list_for_device(
         self,
         *,

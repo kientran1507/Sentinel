@@ -60,6 +60,48 @@ class AlertRepository:
             ).fetchall()
             return [self._from_row(row) for row in rows]
 
+    def query(
+        self,
+        *,
+        limit: int,
+        device_identity: Optional[str] = None,
+        severity: Optional[Severity | str] = None,
+        alert_type: Optional[AlertType | str] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> list[Alert]:
+        clauses = []
+        parameters: list[Any] = []
+        if device_identity:
+            if device_identity.startswith("ip:"):
+                clauses.append(
+                    "(device_identity = ? OR json_extract(event_snapshot, '$.ip_address') = ?)"
+                )
+                parameters.extend((device_identity, device_identity[3:]))
+            else:
+                clauses.append("device_identity = ?")
+                parameters.append(device_identity)
+        if severity is not None:
+            clauses.append("severity = ?")
+            parameters.append(self._enum_value(severity))
+        if alert_type is not None:
+            clauses.append("alert_type = ?")
+            parameters.append(self._enum_value(alert_type))
+        if start is not None:
+            clauses.append("timestamp >= ?")
+            parameters.append(self._format_timestamp(start))
+        if end is not None:
+            clauses.append("timestamp < ?")
+            parameters.append(self._format_timestamp(end))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with self.storage.transaction() as connection:
+            rows = connection.execute(
+                "SELECT * FROM alerts" + where +
+                " ORDER BY timestamp DESC, alert_id DESC LIMIT ?",
+                tuple(parameters) + (limit,),
+            ).fetchall()
+            return [self._from_row(row) for row in rows]
+
     def list_for_device(
         self,
         *,
