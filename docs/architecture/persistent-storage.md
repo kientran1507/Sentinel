@@ -3,7 +3,7 @@
 This document defines the boundary for persistent device, event, and alert
 storage. The storage lifecycle abstraction and SQLite foundation are now
 implemented, but the current runtime remains unchanged: this branch does not
-persist devices, events, or alerts.
+automatically persist devices, events, or alerts.
 
 ## Implemented Now
 
@@ -12,11 +12,11 @@ persist devices, events, or alerts.
 - `SQLiteStorage` owns one standard-library `sqlite3` connection per instance,
   creates parent directories for file databases, initializes idempotently, and
   closes safely.
-- A minimal `storage_metadata` table stores schema version `3` for future
-  migration work, and initialization now creates the `devices` and
-  `device_events` tables. `DeviceRepository` persists current device state and
-  `DeviceEventRepository` persists immutable event history. No alert table
-  exists yet.
+- A minimal `storage_metadata` table stores schema version `4` for future
+  migration work, and initialization now creates the `devices`,
+  `device_events`, and `alerts` tables. `DeviceRepository` persists current
+  device state, `DeviceEventRepository` persists immutable event history, and
+  `AlertRepository` persists immutable alert history.
 - `SENTINEL_DATABASE_PATH` selects the SQLite file. The default is
   `data/sentinel.db` relative to the process working directory.
 
@@ -38,6 +38,14 @@ Events are ordered chronologically and are never updated. Saving the same
 event ID again is idempotent and does not create a duplicate. Events have no
 foreign-key dependency on `devices`, so history remains readable if a current
 device record is removed.
+
+`AlertRepository` stores the existing `Alert` fields: alert ID, alert type,
+severity, title, message, UTC creation timestamp, device identity, originating
+event ID, and a JSON snapshot of the originating event. Alerts are immutable
+historical records. Re-saving an alert ID is idempotent, and there is no
+foreign-key dependency on either the current device or event tables. The
+current `Alert` model has no acknowledgement or resolution fields, so no such
+state operations are exposed.
 
 ## Current State
 
@@ -138,8 +146,8 @@ storage implementation and connect it to these boundaries.
 
 ## Proposed Entities
 
-These are conceptual entities only. No implementation classes or database
-tables are introduced by this document.
+These entities describe the implemented persistence records and their future
+runtime relationships.
 
 ### Device
 
@@ -174,11 +182,10 @@ rewritten merely because the device's current state changes.
 ### Alert
 
 Represents a rule-generated operational alert derived from a `DeviceEvent`.
-The conceptual record may include an alert ID, alert type, severity, title,
-message/details, associated device and originating event IDs, and its
-timestamp. Delivery status, provider, attempt timestamps, and failure details
-may be stored separately or as delivery metadata when that is needed for
-retries and auditability.
+The implemented repository stores the alert ID, alert type, severity, title,
+message, timestamp, associated device identity, originating event ID, and the
+serialized originating event. The current model has no acknowledgement,
+resolution, delivery, or retry state; those are not invented by this phase.
 
 An alert is linked to the event that caused it and may be associated with one
 device. One event may produce zero or more alerts as rules evolve.
@@ -227,15 +234,16 @@ The proposed implementation sequence is:
 2. Phase 2 - SQLite implementation (implemented)
 3. Phase 3 - Device persistence (implemented, repository only)
 4. Phase 4 - Event persistence (implemented, repository only)
-5. Phase 5 - Alert persistence
+5. Phase 5 - Alert persistence (implemented, repository only)
 6. Phase 6 - Runtime integration
 7. Phase 7 - Historical queries
 8. Phase 8 - Tests and migration/recovery handling
 
-Phases 5 through 8 are future work. Device and event repositories are not
-integrated into the runtime: `sentinel start` does not hydrate or write the
-database. This step does not connect `EventBus` to persistence, automatically
-persist events, persist alerts, change notification behavior, or change
-command behavior. Startup hydration and historical queries are also not
-implemented. Existing discovery, monitoring, notification, command, and
-`sentinel start` behavior remain unchanged.
+Phases 6 through 8 are future work. Device, event, and alert repositories are
+not integrated into the runtime: `sentinel start` does not hydrate or write
+the database. This step does not connect `EventBus` or `AlertEngine` to
+persistence, automatically persist events or alerts, change notification
+behavior, or change command behavior. Startup hydration, historical queries,
+and retention/cleanup policies are also not implemented. Existing discovery,
+monitoring, notification, command, and `sentinel start` behavior remain
+unchanged.
