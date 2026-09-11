@@ -66,10 +66,27 @@ class SQLiteStorage(Storage):
                     """
                 )
                 connection.execute(
-                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 2)"
+                    """
+                    CREATE TABLE IF NOT EXISTS device_events (
+                        event_id TEXT PRIMARY KEY,
+                        event_type TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        device_identity TEXT NOT NULL,
+                        mac_address TEXT,
+                        ip_address TEXT,
+                        hostname TEXT,
+                        previous_state TEXT,
+                        current_state TEXT,
+                        metadata TEXT NOT NULL DEFAULT '{}',
+                        device_snapshot TEXT
+                    )
+                    """
                 )
                 connection.execute(
-                    "UPDATE storage_metadata SET schema_version = 2 WHERE id = 1 AND schema_version < 2"
+                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 3)"
+                )
+                connection.execute(
+                    "UPDATE storage_metadata SET schema_version = 3 WHERE id = 1 AND schema_version < 3"
                 )
                 connection.commit()
                 self._connection = connection

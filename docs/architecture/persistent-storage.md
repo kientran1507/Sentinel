@@ -12,10 +12,11 @@ persist devices, events, or alerts.
 - `SQLiteStorage` owns one standard-library `sqlite3` connection per instance,
   creates parent directories for file databases, initializes idempotently, and
   closes safely.
-- A minimal `storage_metadata` table stores schema version `2` for future
-  migration work, and initialization now creates the `devices` table. The
-  `DeviceRepository` persists the current device representation without
-  creating device-event or alert tables.
+- A minimal `storage_metadata` table stores schema version `3` for future
+  migration work, and initialization now creates the `devices` and
+  `device_events` tables. `DeviceRepository` persists current device state and
+  `DeviceEventRepository` persists immutable event history. No alert table
+  exists yet.
 - `SENTINEL_DATABASE_PATH` selects the SQLite file. The default is
   `data/sentinel.db` relative to the process working directory.
 
@@ -29,6 +30,14 @@ addresses are the preferred identity; MAC-less devices use their IP address.
 If a MAC later appears for a MAC-less record at the same IP, the record is
 promoted to the MAC identity. A MAC-less device that changes IP cannot be
 correlated reliably without another stable identifier.
+
+`DeviceEventRepository` stores event IDs, stable event types, UTC timestamps,
+device identity, MAC/IP/hostname values, previous and current state JSON,
+metadata JSON, and an optional JSON snapshot of the associated `ZTEDevice`.
+Events are ordered chronologically and are never updated. Saving the same
+event ID again is idempotent and does not create a duplicate. Events have no
+foreign-key dependency on `devices`, so history remains readable if a current
+device record is removed.
 
 ## Current State
 
@@ -152,9 +161,10 @@ runtime services.
 ### DeviceEvent
 
 Represents an immutable observation or state transition associated with a
-device. It should retain a stable event ID, event type, timestamp, device
-identity, relevant IP/hostname values, previous and current state snapshots,
-and event metadata. The initial event vocabulary should cover the existing
+device. The implemented event repository retains a stable event ID, event
+type, timestamp, device identity, relevant IP/hostname values, previous and
+current state snapshots, event metadata, and the optional device snapshot.
+The initial event vocabulary covers the existing
 `DeviceEventType` values, including discovered, online/recovered, offline, IP
 changed, hostname changed, and connection changed.
 
@@ -216,14 +226,16 @@ The proposed implementation sequence is:
 1. Phase 1 - Storage abstraction (implemented)
 2. Phase 2 - SQLite implementation (implemented)
 3. Phase 3 - Device persistence (implemented, repository only)
-4. Phase 4 - Event persistence
+4. Phase 4 - Event persistence (implemented, repository only)
 5. Phase 5 - Alert persistence
 6. Phase 6 - Runtime integration
 7. Phase 7 - Historical queries
 8. Phase 8 - Tests and migration/recovery handling
 
-Phases 4 through 8 are future work. Device persistence is not integrated into
-the runtime: `sentinel start` does not hydrate or write the database. Event and
-alert persistence, startup hydration, and historical queries are also not
+Phases 5 through 8 are future work. Device and event repositories are not
+integrated into the runtime: `sentinel start` does not hydrate or write the
+database. This step does not connect `EventBus` to persistence, automatically
+persist events, persist alerts, change notification behavior, or change
+command behavior. Startup hydration and historical queries are also not
 implemented. Existing discovery, monitoring, notification, command, and
 `sentinel start` behavior remain unchanged.

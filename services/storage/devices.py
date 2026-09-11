@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional
 
 from services.discovery.models import DiscoveredDevice, ZTEDevice
 
@@ -23,6 +23,24 @@ class StoredDevice:
     last_seen: datetime
     status: str
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def normalize_mac(mac_address: Optional[str]) -> Optional[str]:
+    if not mac_address:
+        return None
+    cleaned = mac_address.strip().lower().replace("-", ":")
+    if len(cleaned) == 12 and ":" not in cleaned:
+        cleaned = ":".join(cleaned[index:index + 2] for index in range(0, 12, 2))
+    return cleaned
+
+
+def device_identity_key(mac_address: Optional[str], ip_address: Optional[str]) -> str:
+    normalized_mac = normalize_mac(mac_address)
+    if normalized_mac:
+        return f"mac:{normalized_mac}"
+    if ip_address:
+        return f"ip:{ip_address}"
+    raise ValueError("device requires a MAC address or IP address")
 
 
 class DeviceRepository:
@@ -157,7 +175,7 @@ class DeviceRepository:
             ip_address = device.ip_address
             timestamp = self._ensure_utc(device.discovered_at)
             return StoredDevice(
-                identity_key=self._identity_key(mac_address, ip_address),
+                identity_key=device_identity_key(mac_address, ip_address),
                 mac_address=mac_address,
                 ip_address=ip_address,
                 hostname=device.hostname,
@@ -179,7 +197,7 @@ class DeviceRepository:
         }
         device_metadata.update(metadata or {})
         return StoredDevice(
-            identity_key=self._identity_key(mac_address, ip_address),
+            identity_key=device_identity_key(mac_address, ip_address),
             mac_address=mac_address,
             ip_address=ip_address,
             hostname=device.hostname,
@@ -190,22 +208,7 @@ class DeviceRepository:
             metadata=device_metadata,
         )
 
-    @staticmethod
-    def _identity_key(mac_address: Optional[str], ip_address: Optional[str]) -> str:
-        if mac_address:
-            return f"mac:{mac_address}"
-        if ip_address:
-            return f"ip:{ip_address}"
-        raise ValueError("device requires a MAC address or IP address")
-
-    @staticmethod
-    def _normalize_mac(mac_address: Optional[str]) -> Optional[str]:
-        if not mac_address:
-            return None
-        cleaned = mac_address.strip().lower().replace("-", ":")
-        if len(cleaned) == 12 and ":" not in cleaned:
-            cleaned = ":".join(cleaned[index:index + 2] for index in range(0, 12, 2))
-        return cleaned
+    _normalize_mac = staticmethod(normalize_mac)
 
     @staticmethod
     def _ensure_utc(value: datetime) -> datetime:
