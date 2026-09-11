@@ -16,8 +16,8 @@ PathLike = Union[str, Path]
 class SQLiteStorage(Storage):
     """SQLite storage with explicit instance-owned lifecycle.
 
-    The connection uses sqlite3's default same-thread check. An instance must
-    therefore be initialized, used, and closed by one thread.
+    The connection may be used by the monitor and event-bus worker threads.
+    Operations are serialized by the instance lock.
     """
 
     def __init__(self, database_path: Optional[PathLike] = None):
@@ -39,7 +39,7 @@ class SQLiteStorage(Storage):
                 if str(self.database_path) != ":memory:":
                     self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
-                connection = sqlite3.connect(str(self.database_path), check_same_thread=True)
+                connection = sqlite3.connect(str(self.database_path), check_same_thread=False)
                 connection.row_factory = sqlite3.Row
                 connection.execute("PRAGMA foreign_keys = ON")
                 connection.execute(

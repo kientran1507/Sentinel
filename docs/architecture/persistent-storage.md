@@ -20,9 +20,12 @@ automatically persist devices, events, or alerts.
 - `SENTINEL_DATABASE_PATH` selects the SQLite file. The default is
   `data/sentinel.db` relative to the process working directory.
 
-The foundation is opt-in and is not constructed by `sentinel start` or any
-existing service. Creating a `SQLiteStorage` instance and calling
-`initialize()` is currently the only way to create a database.
+The foundation is now owned by the integrated `sentinel start` runtime. The
+runtime creates one `SQLiteStorage`, initializes it before constructing the
+monitoring services, passes repository-backed adapters to the monitoring
+boundaries, and closes storage after commands, monitoring, and the event bus
+have stopped. Standalone commands and unit tests can still use the storage
+classes directly.
 
 `DeviceRepository` accepts the existing `ZTEDevice` and `DiscoveredDevice`
 models and stores durable identity/state fields plus JSON metadata. MAC
@@ -46,6 +49,32 @@ historical records. Re-saving an alert ID is idempotent, and there is no
 foreign-key dependency on either the current device or event tables. The
 current `Alert` model has no acknowledgement or resolution fields, so no such
 state operations are exposed.
+
+## Runtime Integration
+
+The live runtime owns one storage instance and three repositories:
+
+```text
+SentinelRuntime
+  |
+  +-- SQLiteStorage
+      +-- DeviceRepository
+      +-- DeviceEventRepository
+      +-- AlertRepository
+```
+
+During each monitor poll, a runtime collector adapter persists the returned
+device snapshot before passing it to the existing `PresenceTracker`. The
+monitor's existing event callback persists each actual `DeviceEvent` before
+the unchanged `EventBus` publication. A runtime notification adapter persists
+each generated `Alert` and then delegates to the existing
+`NotificationManager`, preserving provider behavior and command state.
+
+Persistence is secondary to monitoring. Device, event, and alert writes catch
+and log their own failures; a closed or temporarily unavailable SQLite
+connection therefore does not stop collection, presence transitions,
+EventBus processing, alert history, or notifications. There are no retries,
+queues, or background persistence workers.
 
 ## Current State
 
@@ -206,12 +235,13 @@ The future implementation should:
   presence debouncing, or current runtime decisions;
 - define timestamp, identity normalization, and write-failure behavior before
   enabling persistence in the runtime;
-- make startup and recovery behavior explicit when persisted state is loaded.
+- make startup and recovery behavior explicit when persisted state is loaded;
+  current runtime startup initializes storage but does not hydrate state.
 
 `SENTINEL_DATABASE_PATH` is the only storage setting. It follows the existing
 environment-based configuration convention and may point to a file path or
-`:memory:` for tests. The foundation does not load the setting into the
-runtime yet.
+`:memory:` for tests. `sentinel start` loads the setting when it constructs its
+single runtime-owned storage instance.
 
 ### Lifecycle and threading
 
@@ -220,11 +250,11 @@ using `transaction()` and call `close()` when the owner is finished. Repeated
 initialization and close calls are safe. Transactions commit on successful
 exit and roll back when the body raises an exception.
 
-The connection uses sqlite3's default same-thread check. A storage instance
-must be initialized, used, and closed by one thread; future asynchronous
-adapters should give each worker an explicit storage instance or otherwise
-define connection ownership. There is no global connection or connection
-pool.
+The runtime monitor and asynchronous event-bus workers may use the shared
+connection from different threads. SQLite's same-thread check is disabled for
+this instance, and the storage lock serializes each transaction. The runtime
+closes the connection only after those services stop. There is no global
+connection or connection pool.
 
 ## Implementation Roadmap
 
@@ -235,15 +265,14 @@ The proposed implementation sequence is:
 3. Phase 3 - Device persistence (implemented, repository only)
 4. Phase 4 - Event persistence (implemented, repository only)
 5. Phase 5 - Alert persistence (implemented, repository only)
-6. Phase 6 - Runtime integration
+6. Phase 6 - Runtime integration (implemented, additive writes only)
 7. Phase 7 - Historical queries
 8. Phase 8 - Tests and migration/recovery handling
 
-Phases 6 through 8 are future work. Device, event, and alert repositories are
-not integrated into the runtime: `sentinel start` does not hydrate or write
-the database. This step does not connect `EventBus` or `AlertEngine` to
-persistence, automatically persist events or alerts, change notification
-behavior, or change command behavior. Startup hydration, historical queries,
-and retention/cleanup policies are also not implemented. Existing discovery,
-monitoring, notification, command, and `sentinel start` behavior remain
-unchanged.
+Phases 7 and 8 are future work. Runtime persistence is active, but startup
+hydration and reconstruction of `PresenceTracker` or `AlertEngine` are not
+implemented. Historical `/alerts` and `/devices` queries, event-history
+commands/API endpoints, retention/cleanup policies, database backup strategy,
+and advanced asynchronous persistence queues are also not implemented.
+Existing discovery, monitoring, notification, command, and `sentinel start`
+behavior remain unchanged apart from additive persistence writes.

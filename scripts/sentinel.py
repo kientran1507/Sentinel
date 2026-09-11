@@ -28,6 +28,12 @@ from services.discovery.presence_tracker import PresenceTracker
 from services.discovery.zte_collector import ZTECollector
 from services.discovery.zte_h3601p_client import ZTEH3601PClient
 from services.discovery.zte_monitor import ZTEMonitor
+from services.storage import (
+    PersistingCollector,
+    PersistingNotificationManager,
+    RuntimePersistence,
+    SQLiteStorage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +47,7 @@ class SentinelRuntime:
     alert_engine: AlertEngine
     monitor: ZTEMonitor
     command_service: CommandService
+    storage: SQLiteStorage
 
     def start(self) -> None:
         self.monitor.start()
@@ -52,6 +59,10 @@ class SentinelRuntime:
                 stop()
             except Exception:
                 logger.exception("Failed to stop %s cleanly", name)
+        try:
+            self.storage.close()
+        except Exception:
+            logger.exception("Failed to close persistent storage cleanly")
 
 
 def load_dotenv() -> None:
@@ -200,41 +211,51 @@ def create_runtime() -> SentinelRuntime:
     if missing:
         raise RuntimeError("missing ZTE router configuration: " + ", ".join(missing))
 
-    registry = DeviceRegistry()
-    presence_tracker = PresenceTracker(registry)
-    event_bus = EventBus()
-    alert_history = AlertHistory()
-    notification_manager = NotificationManager()
-    notification_manager.add_from_environment()
-    alert_engine = AlertEngine(notification_manager=notification_manager, alert_history=alert_history)
-    alert_engine.attach(event_bus)
+    storage = SQLiteStorage()
+    storage.initialize()
+    try:
+        persistence = RuntimePersistence(storage)
+        registry = DeviceRegistry()
+        presence_tracker = PresenceTracker(registry)
+        event_bus = EventBus()
+        alert_history = AlertHistory()
+        notification_manager = NotificationManager()
+        notification_manager.add_from_environment()
+        alert_notifications = PersistingNotificationManager(notification_manager, persistence)
+        alert_engine = AlertEngine(notification_manager=alert_notifications, alert_history=alert_history)
+        alert_engine.attach(event_bus)
 
-    client = ZTEH3601PClient(
-        url=os.environ["ZTE_ROUTER_URL"],
-        username=os.environ["ZTE_USERNAME"],
-        password=os.environ["ZTE_PASSWORD"],
-        verify_tls=False,
-        password_algorithm="sha256_concat",
-        rsa_public_key=os.getenv("ZTE_RSA_PUBLIC_KEY"),
-    )
-    monitor = ZTEMonitor(
-        client=client,
-        collector=ZTECollector(client),
-        registry=registry,
-        presence_tracker=presence_tracker,
-        event_bus=event_bus,
-    )
-    handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history)
-    command_service = CommandService(handler=handler)
-    return SentinelRuntime(
-        registry=registry,
-        presence_tracker=presence_tracker,
-        event_bus=event_bus,
-        alert_history=alert_history,
-        alert_engine=alert_engine,
-        monitor=monitor,
-        command_service=command_service,
-    )
+        client = ZTEH3601PClient(
+            url=os.environ["ZTE_ROUTER_URL"],
+            username=os.environ["ZTE_USERNAME"],
+            password=os.environ["ZTE_PASSWORD"],
+            verify_tls=False,
+            password_algorithm="sha256_concat",
+            rsa_public_key=os.getenv("ZTE_RSA_PUBLIC_KEY"),
+        )
+        monitor = ZTEMonitor(
+            client=client,
+            collector=PersistingCollector(ZTECollector(client), persistence),
+            registry=registry,
+            presence_tracker=presence_tracker,
+            on_event=persistence.persist_event,
+            event_bus=event_bus,
+        )
+        handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history)
+        command_service = CommandService(handler=handler)
+        return SentinelRuntime(
+            registry=registry,
+            presence_tracker=presence_tracker,
+            event_bus=event_bus,
+            alert_history=alert_history,
+            alert_engine=alert_engine,
+            monitor=monitor,
+            command_service=command_service,
+            storage=storage,
+        )
+    except Exception:
+        storage.close()
+        raise
 
 
 def run_runtime(output: TextIO = sys.stdout) -> int:
