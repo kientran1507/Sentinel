@@ -74,6 +74,8 @@ Set values in `.env`; never commit that file. See [.env.example](.env.example) a
 
 `DISCORD_WEBHOOK_URL` is Sentinel-to-Discord outbound delivery. `DISCORD_BOT_TOKEN` is Discord-to-Sentinel inbound control. The bot uses application commands and does not require the Message Content privileged intent.
 
+Persistent storage is selected explicitly. `SENTINEL_STORAGE_BACKEND=sqlite` uses `SENTINEL_DATABASE_PATH` for local development; `SENTINEL_STORAGE_BACKEND=postgresql` requires `SENTINEL_DATABASE_URL`. PostgreSQL is the production backend. Sentinel never imports or falls back between database files automatically.
+
 ## Commands
 
 After configuring numeric allowlists, start the integrated runtime and use `/help`, `/devices`, `/status`, and `/alerts` from Telegram or Discord. `/devices` reads the current shared `DeviceRegistry`; it does not start a scan. Discord uses embeds, while Telegram uses escaped HTML entries rather than fixed-width tables.
