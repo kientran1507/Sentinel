@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from services.commands.handler import CommandHandler
 from services.commands.renderers import render_discord, render_telegram
@@ -43,6 +45,49 @@ class TestCommandRenderers(unittest.TestCase):
         self.assertNotIn("<router>", rendered)
         self.assertIn("unknown", rendered)
         self.assertIn("<code>unknown</code>", rendered)
+
+    def test_devices_render_persisted_vendor_for_telegram_and_discord(self):
+        asset_repository = Mock()
+        asset_repository.get_by_mac.return_value = SimpleNamespace(vendor="Intel Corporate")
+        handler = CommandHandler(
+            self.handler.registry,
+            asset_repository=asset_repository,
+            allowed_users={"telegram": {"10"}, "discord": {"20"}},
+        )
+
+        response = handler.handle("/devices", platform="telegram", user_id="10")
+        telegram, _ = render_telegram(response)
+        self.assertIn("Vendor: Intel Corporate", telegram)
+        self.assertIn("192.168.1.10", telegram)
+        self.assertIn("AA:BB:CC:DD:EE:01", telegram)
+
+        embed = render_discord(response, FakeDiscord)
+        self.assertIn("Vendor: Intel Corporate", embed.fields[0]["value"])
+        self.assertIn("192.168.1.10", embed.fields[0]["value"])
+        asset_repository.get_by_ip.assert_not_called()
+
+    def test_devices_use_unknown_for_empty_vendor_and_missing_mac(self):
+        registry = DeviceRegistry()
+        registry.devices["no-mac"] = ZTEDevice(mac_address="", ip_address="192.168.1.30", hostname="sensor", status="online")
+        asset_repository = Mock()
+        asset_repository.get_by_mac.return_value = None
+        asset_repository.get_by_ip.return_value = SimpleNamespace(vendor="")
+        handler = CommandHandler(
+            registry,
+            asset_repository=asset_repository,
+            allowed_users={"telegram": {"10"}, "discord": {"20"}},
+        )
+
+        response = handler.handle("/devices", platform="telegram", user_id="10")
+        telegram, _ = render_telegram(response)
+        self.assertIn("MAC: <code>unknown</code>", telegram)
+        self.assertIn("Vendor: Unknown", telegram)
+
+        embed = render_discord(response, FakeDiscord)
+        self.assertIn("MAC: `unknown`", embed.fields[0]["value"])
+        self.assertIn("Vendor: Unknown", embed.fields[0]["value"])
+        asset_repository.get_by_mac.assert_called_once_with("")
+        asset_repository.get_by_ip.assert_called_once_with("192.168.1.30")
 
     def test_telegram_empty_state_is_clear(self):
         response = CommandHandler(DeviceRegistry(), allowed_users={"telegram": {"10"}}).handle("/devices", platform="telegram", user_id="10")

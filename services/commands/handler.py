@@ -40,11 +40,12 @@ def parse_allowed_ids(value: str | None) -> frozenset[str]:
 class CommandHandler:
     """Platform-neutral, allowlisted Sentinel command implementation."""
 
-    def __init__(self, registry: DeviceRegistry, *, monitor=None, alert_history: Optional[AlertHistory] = None, history_service: Optional[HistoryService] = None, allowed_users: Optional[Dict[str, Iterable[str]]] = None, rate_limit: int = 10, rate_window: float = 30.0):
+    def __init__(self, registry: DeviceRegistry, *, monitor=None, alert_history: Optional[AlertHistory] = None, history_service: Optional[HistoryService] = None, asset_repository=None, allowed_users: Optional[Dict[str, Iterable[str]]] = None, rate_limit: int = 10, rate_window: float = 30.0):
         self.registry = registry
         self.monitor = monitor
         self.alert_history = alert_history or AlertHistory()
         self.history_service = history_service
+        self.asset_repository = asset_repository
         configured = allowed_users or {
             "discord": parse_allowed_ids(os.getenv("DISCORD_ALLOWED_USER_IDS")),
             "telegram": parse_allowed_ids(os.getenv("TELEGRAM_ALLOWED_USER_IDS")),
@@ -107,13 +108,22 @@ class CommandHandler:
         return CommandResponse(HELP_TEXT, command=command_name, data={"section": "help"})
 
     def _devices(self, command_name: str = "devices", args=None) -> CommandResponse:
-        devices = sorted(self.registry.get_all(), key=lambda device: (device.hostname or "unknown", device.mac_address))
+        devices = sorted(self.registry.get_all(), key=lambda device: (device.hostname or "unknown", device.mac_address or ""))
         counts = {"online": 0, "offline": 0, "unknown": 0}
         rows = []
         for device in devices:
             state = (device.status or "unknown").upper()
             counts[state.lower()] = counts.get(state.lower(), 0) + 1
-            rows.append({"hostname": device.hostname, "ip": device.ip_address, "mac": device.mac_address.upper(), "state": state})
+            vendor = None
+            if self.asset_repository is not None:
+                try:
+                    asset = self.asset_repository.get_by_mac(device.mac_address)
+                    if asset is None:
+                        asset = self.asset_repository.get_by_ip(device.ip_address)
+                    vendor = asset.vendor if asset else None
+                except Exception:
+                    logger.exception("Failed to read asset vendor for device: mac=%s", device.mac_address)
+            rows.append({"hostname": device.hostname, "ip": device.ip_address, "mac": (device.mac_address or "").upper() or None, "vendor": vendor or "Unknown", "state": state})
         text_lines = ["Sentinel Devices", ""]
         text_lines.extend(f"{row['hostname'] or 'unknown'} — {row['ip'] or 'unknown'} — {row['mac']} — {row['state']}" for row in rows)
         text_lines.extend(["", f"Total: {len(rows)}", f"Online: {counts.get('online', 0)}", f"Offline: {counts.get('offline', 0)}", f"Unknown: {counts.get('unknown', 0)}"])

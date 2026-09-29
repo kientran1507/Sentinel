@@ -25,6 +25,24 @@ HostnameResolver
 - `HostnameResolver` enriches records without changing scanner semantics. It attempts PTR, Windows NetBIOS, mDNS, and an optional LLMNR hook. Failures are non-fatal and unresolved hostnames remain `None`.
 - `DeviceRegistry` is the canonical in-memory store used by the ZTE monitoring/runtime path. Discovery records and ZTE records are related models; discovery itself does not persist to a database.
 
+## MAC vendor enrichment
+
+Persisted asset observations use the `mac-vendor-lookup` Python library with its local IEEE OUI cache. Enrichment is performed once at the shared asset repository boundary for ARP, ICMP records that include a MAC, and ZTE observations; it does not change asset identity, deduplication, trust, or device status. Lookup failures are non-fatal, and a previously known vendor is retained when a later lookup is empty or unavailable.
+
+Install the dependency with the normal project setup:
+
+```powershell
+python -m pip install -e .
+```
+
+The library reads `~/.cache/mac-vendors.txt` (or its supported package cache locations) during normal lookup. Sentinel does not download or refresh this file during startup, discovery, or persistence. Initialize or update it explicitly when online with:
+
+```powershell
+python -c "from mac_vendor_lookup import MacLookup; MacLookup().update_vendors()"
+```
+
+If the local file is absent, vendor enrichment remains unavailable and discovery continues normally. Vendor identification is best-effort: unknown, malformed, multicast, locally administered, and randomized MAC addresses may have no meaningful manufacturer. A vendor result is descriptive metadata only and does not establish device identity or trust.
+
 ## CLI discovery
 
 The discovery helper supports the implemented scanner options:

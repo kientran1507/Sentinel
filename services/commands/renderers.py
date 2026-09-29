@@ -54,7 +54,8 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
                 ip = html.escape(device["ip"] or "unknown")
                 mac = html.escape(device["mac"] or "unknown")
                 state = html.escape(device["state"])
-                lines.extend([f"{_status_icon(device['state'])} <b>{name}</b>", f"   State: <b>{state}</b>", f"   IP: <code>{ip}</code>", f"   MAC: <code>{mac}</code>", ""])
+                vendor = html.escape(device.get("vendor") or "Unknown")
+                lines.extend([f"{_status_icon(device['state'])} <b>{name}</b>", f"   State: <b>{state}</b>", f"   IP: <code>{ip}</code>", f"   MAC: <code>{mac}</code>", f"   Vendor: {vendor}", ""])
             lines.extend(["━━━━━━━━━━━━━━━━", f"Total: <b>{data['total']}</b>", f"🟢 Online: {data['online']}", f"🔴 Offline: {data['offline']}", f"⚪ Unknown: {data['unknown']}"])
         return "\n".join(lines), "HTML"
     if command == "status":
@@ -133,7 +134,7 @@ def render_discord(response: CommandResponse, discord_module=None):
                 state = device["state"]
                 embed.add_field(
                     name=f"{_status_icon(state)} {device['hostname'] or 'Unknown hostname'} · {state}",
-                    value=f"IP: `{device['ip'] or 'unknown'}`\nMAC: `{device['mac'] or 'unknown'}`",
+                    value=f"IP: `{device['ip'] or 'unknown'}`\nMAC: `{device['mac'] or 'unknown'}`\nVendor: {device.get('vendor') or 'Unknown'}",
                     inline=False,
                 )
             embed.add_field(name="Summary", value=f"Total **{data['total']}** · 🟢 **{data['online']}** online · 🔴 **{data['offline']}** offline · ⚪ **{data['unknown']}** unknown", inline=False)

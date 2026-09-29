@@ -2,6 +2,7 @@
 
 from .base import Storage, StorageError, StorageInitializationError, StorageNotInitializedError
 from .alerts import AlertRepository
+from .assets import Asset, AssetAddress, AssetRepository
 from .config import DEFAULT_DATABASE_PATH, get_database_path
 from .device_events import DeviceEventRepository
 from .devices import DeviceRepository, StoredDevice
@@ -12,6 +13,9 @@ from .sqlite import SQLiteStorage
 __all__ = [
     "DEFAULT_DATABASE_PATH",
     "AlertRepository",
+    "Asset",
+    "AssetAddress",
+    "AssetRepository",
     "DeviceEventRepository",
     "DeviceRepository",
     "DEFAULT_HISTORY_LIMIT",

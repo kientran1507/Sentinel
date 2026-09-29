@@ -243,7 +243,7 @@ def create_runtime() -> SentinelRuntime:
             event_bus=event_bus,
         )
         history_service = HistoryService(persistence.events, persistence.alerts)
-        handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history, history_service=history_service)
+        handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history, history_service=history_service, asset_repository=persistence.assets)
         command_service = CommandService(handler=handler)
         return SentinelRuntime(
             registry=registry,

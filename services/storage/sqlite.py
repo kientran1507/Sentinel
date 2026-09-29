@@ -67,6 +67,37 @@ class SQLiteStorage(Storage):
                 )
                 connection.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS assets (
+                        asset_id TEXT PRIMARY KEY,
+                        mac_address TEXT UNIQUE,
+                        hostname TEXT,
+                        vendor TEXT,
+                        device_type TEXT,
+                        trust_level TEXT NOT NULL DEFAULT 'unknown',
+                        status TEXT NOT NULL DEFAULT 'unknown',
+                        first_seen TEXT NOT NULL,
+                        last_seen TEXT NOT NULL,
+                        metadata TEXT NOT NULL DEFAULT '{}'
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS asset_addresses (
+                        asset_id TEXT NOT NULL,
+                        ip_address TEXT NOT NULL,
+                        interface TEXT,
+                        source TEXT,
+                        first_seen TEXT NOT NULL,
+                        last_seen TEXT NOT NULL,
+                        metadata TEXT NOT NULL DEFAULT '{}',
+                        PRIMARY KEY (asset_id, ip_address),
+                        FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
+                    )
+                    """
+                )
+                connection.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS device_events (
                         event_id TEXT PRIMARY KEY,
                         event_type TEXT NOT NULL,

@@ -8,6 +8,7 @@ from services.alerting.notifications import NotificationManager
 from services.discovery.models import DeviceEvent, ZTEDevice
 
 from .alerts import AlertRepository
+from .assets import AssetRepository
 from .device_events import DeviceEventRepository
 from .devices import DeviceRepository
 from .sqlite import SQLiteStorage
@@ -21,6 +22,7 @@ class RuntimePersistence:
     def __init__(self, storage: SQLiteStorage):
         self.storage = storage
         self.devices = DeviceRepository(storage)
+        self.assets = AssetRepository(storage)
         self.events = DeviceEventRepository(storage)
         self.alerts = AlertRepository(storage)
 
@@ -28,6 +30,7 @@ class RuntimePersistence:
         for device in devices:
             try:
                 self.devices.save(device)
+                self.assets.record_observation(device)
             except Exception:
                 logger.exception("Failed to persist device: mac=%s", getattr(device, "mac_address", None))
 
