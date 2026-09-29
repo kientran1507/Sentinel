@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
@@ -31,6 +32,11 @@ def normalize_mac(mac_address: Optional[str]) -> Optional[str]:
     cleaned = mac_address.strip().lower().replace("-", ":")
     if len(cleaned) == 12 and ":" not in cleaned:
         cleaned = ":".join(cleaned[index:index + 2] for index in range(0, 12, 2))
+    if not re.fullmatch(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5}", cleaned):
+        return None
+    octets = [int(value, 16) for value in cleaned.split(":")]
+    if cleaned in {"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"} or octets[0] & 1:
+        return None
     return cleaned
 
 

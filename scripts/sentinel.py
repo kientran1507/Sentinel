@@ -33,7 +33,10 @@ from services.storage import (
     PersistingNotificationManager,
     RuntimePersistence,
     SQLiteStorage,
+    PostgreSQLStorage,
     HistoryService,
+    get_network_scope,
+    get_storage_backend,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,7 +51,7 @@ class SentinelRuntime:
     alert_engine: AlertEngine
     monitor: ZTEMonitor
     command_service: CommandService
-    storage: SQLiteStorage
+    storage: object
 
     def start(self) -> None:
         self.monitor.start()
@@ -212,10 +215,10 @@ def create_runtime() -> SentinelRuntime:
     if missing:
         raise RuntimeError("missing ZTE router configuration: " + ", ".join(missing))
 
-    storage = SQLiteStorage()
+    storage = PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
     storage.initialize()
     try:
-        persistence = RuntimePersistence(storage)
+        persistence = RuntimePersistence(storage, get_network_scope())
         registry = DeviceRegistry()
         presence_tracker = PresenceTracker(registry)
         event_bus = EventBus()

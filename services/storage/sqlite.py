@@ -77,7 +77,9 @@ class SQLiteStorage(Storage):
                         status TEXT NOT NULL DEFAULT 'unknown',
                         first_seen TEXT NOT NULL,
                         last_seen TEXT NOT NULL,
-                        metadata TEXT NOT NULL DEFAULT '{}'
+                        metadata TEXT NOT NULL DEFAULT '{}',
+                        network_scope TEXT NOT NULL DEFAULT 'default',
+                        is_provisional INTEGER NOT NULL DEFAULT 0
                     )
                     """
                 )
@@ -85,17 +87,53 @@ class SQLiteStorage(Storage):
                     """
                     CREATE TABLE IF NOT EXISTS asset_addresses (
                         asset_id TEXT NOT NULL,
+                        network_scope TEXT NOT NULL DEFAULT 'default',
                         ip_address TEXT NOT NULL,
                         interface TEXT,
                         source TEXT,
                         first_seen TEXT NOT NULL,
                         last_seen TEXT NOT NULL,
+                        assignment_started TEXT,
+                        assignment_ended TEXT,
                         metadata TEXT NOT NULL DEFAULT '{}',
-                        PRIMARY KEY (asset_id, ip_address),
+                        PRIMARY KEY (asset_id, network_scope, ip_address),
                         FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
                     )
                     """
                 )
+                self._ensure_column(connection, "assets", "network_scope", "TEXT NOT NULL DEFAULT 'default'")
+                self._ensure_column(connection, "assets", "is_provisional", "INTEGER NOT NULL DEFAULT 0")
+                self._ensure_column(connection, "asset_addresses", "network_scope", "TEXT NOT NULL DEFAULT 'default'")
+                self._ensure_column(connection, "asset_addresses", "assignment_started", "TEXT")
+                self._ensure_column(connection, "asset_addresses", "assignment_ended", "TEXT")
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS asset_observations (
+                        observation_id TEXT PRIMARY KEY,
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        asset_id TEXT,
+                        network_scope TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        observed_at TEXT NOT NULL,
+                        ingested_at TEXT NOT NULL,
+                        raw_mac_address TEXT,
+                        normalized_mac_address TEXT,
+                        ip_address TEXT,
+                        hostname TEXT,
+                        interface TEXT,
+                        parent_mac_address TEXT,
+                        connection_type TEXT,
+                        rssi REAL,
+                        wireless INTEGER,
+                        metadata TEXT NOT NULL DEFAULT '{}',
+                        FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE SET NULL
+                    )
+                    """
+                )
+                connection.execute("CREATE INDEX IF NOT EXISTS idx_asset_addresses_lookup ON asset_addresses (network_scope, ip_address, last_seen)")
+                connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_asset_addresses_active_scope_ip ON asset_addresses (network_scope, ip_address) WHERE assignment_ended IS NULL")
+                connection.execute("CREATE INDEX IF NOT EXISTS idx_asset_observations_asset_time ON asset_observations (asset_id, observed_at)")
+                connection.execute("CREATE INDEX IF NOT EXISTS idx_asset_observations_source_time ON asset_observations (source, observed_at)")
                 connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS device_events (
@@ -198,3 +236,9 @@ class SQLiteStorage(Storage):
         if self._connection is None:
             raise StorageNotInitializedError("SQLite storage has not been initialized")
         return self._connection
+
+    @staticmethod
+    def _ensure_column(connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

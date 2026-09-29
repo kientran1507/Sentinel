@@ -28,6 +28,7 @@ class DiscoveryOrchestrator:
         methods: Optional[Iterable[str]] = None,
         icmp_kwargs: Optional[Dict] = None,
         arp_kwargs: Optional[Dict] = None,
+        observation_sink=None,
     ):
         self.target = target
         if methods is None:
@@ -41,6 +42,7 @@ class DiscoveryOrchestrator:
 
         self.icmp_kwargs = icmp_kwargs or {}
         self.arp_kwargs = arp_kwargs or {}
+        self.observation_sink = observation_sink
 
     def scan(self) -> List[DiscoveredDevice]:
         """Run the configured scanners and return merged DiscoveredDevice list."""
@@ -64,7 +66,18 @@ class DiscoveryOrchestrator:
                 logger.exception("ICMP scanner failed: %s", e)
 
         # Merge results by IP
+        if self.observation_sink is not None:
+            try:
+                self.observation_sink(arp_results)
+                self.observation_sink(icmp_results)
+            except Exception:
+                logger.exception("Discovery observation persistence failed")
         merged = self._merge_by_ip(arp_results, icmp_results)
+        if self.observation_sink is not None:
+            try:
+                self.observation_sink(merged)
+            except Exception:
+                logger.exception("Merged discovery observation persistence failed")
         return merged
 
     def _merge_by_ip(

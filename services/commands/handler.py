@@ -111,6 +111,26 @@ class CommandHandler:
         devices = sorted(self.registry.get_all(), key=lambda device: (device.hostname or "unknown", device.mac_address or ""))
         counts = {"online": 0, "offline": 0, "unknown": 0}
         rows = []
+        persisted = None
+        if self.asset_repository is not None:
+            try:
+                candidate = self.asset_repository.list()
+                persisted = candidate if isinstance(candidate, list) else None
+            except Exception:
+                logger.exception("Failed to read persistent inventory")
+        if persisted:
+            live_by_mac = {(device.mac_address or "").lower(): device for device in devices if device.mac_address}
+            for asset in persisted:
+                live = live_by_mac.get((asset.mac_address or "").lower())
+                state = (live.status if live else "unknown").upper()
+                counts[state.lower()] = counts.get(state.lower(), 0) + 1
+                addresses = self.asset_repository.list_addresses(asset.asset_id)
+                active = next((address for address in addresses if getattr(address, "assignment_ended", None) is None), addresses[0] if addresses else None)
+                rows.append({"hostname": (live.hostname if live and live.hostname else asset.hostname), "ip": (live.ip_address if live else active.ip_address if active else None), "mac": (asset.mac_address or "").upper() or None, "vendor": asset.vendor or "Unknown", "state": state})
+            text_lines = ["Sentinel Devices", ""]
+            text_lines.extend(f"{row['hostname'] or 'unknown'} â€” {row['ip'] or 'unknown'} â€” {row['mac']} â€” {row['state']}" for row in rows)
+            text_lines.extend(["", f"Total: {len(rows)}", f"Online: {counts.get('online', 0)}", f"Offline: {counts.get('offline', 0)}", f"Unknown: {counts.get('unknown', 0)}"])
+            return CommandResponse("\n".join(text_lines), command=command_name, data={"devices": rows, "total": len(rows), **counts})
         for device in devices:
             state = (device.status or "unknown").upper()
             counts[state.lower()] = counts.get(state.lower(), 0) + 1

@@ -6,6 +6,9 @@ Thumbs.db
 
 # Logs and runtime artifacts
 *.log
+*.db
+*.sqlite
+*.sqlite3
 *.pid
 *.seed
 *.pid.lock
