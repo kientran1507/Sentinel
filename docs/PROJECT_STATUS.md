@@ -9,7 +9,7 @@
 | --- | --- |
 | Repository | `kientran1507/Sentinel` |
 | Branch | `feature/persistent-storage` |
-| HEAD | `6ee90f0` - `feat(discovery): persist optional hostname enrichment` |
+| Last implementation commit | `6ee90f0` - `feat(discovery): persist optional hostname enrichment` |
 | Upstream | `origin/feature/persistent-storage` |
 | Synchronization | Synchronized: 0 ahead, 0 behind |
 | Working tree | Clean after the hostname-persistence increment; local database files remain ignored |
