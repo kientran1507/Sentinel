@@ -1,6 +1,6 @@
 # Sentinel Overview
 
-Sentinel is a self-hosted Python system for LAN discovery, ZTE client monitoring, presence transitions, alerting, and authorized operator commands. The implemented runtime is intentionally lightweight and in-process; REST APIs, a database, dashboard, and metrics backend are future extensions rather than current services.
+Sentinel is a self-hosted Python system for LAN discovery, ZTE client monitoring, presence transitions, persistent asset inventory, alerting, and authorized operator commands. The implemented runtime remains a modular monolith with explicit repository boundaries. PostgreSQL is the intended production backend; SQLite is an explicitly selected development/test backend. REST APIs, a dashboard, normalized security events, and metrics remain incremental extensions rather than prematurely separate services.
 
 ## Implemented Runtime
 
@@ -24,6 +24,8 @@ Sentinel is a self-hosted Python system for LAN discovery, ZTE client monitoring
 | `NotificationManager` | Isolates Discord webhook and Telegram provider failures. |
 | `CommandHandler` | Authorizes and serves `/help`, `/devices`, `/status`, and `/alerts`. |
 | `CommandService` | Runs Telegram polling and Discord Gateway adapters. |
+| `RuntimePersistence` | Adapts collector and alert writes to the selected storage backend while isolating persistence failures. |
+| `AssetRepository` | Owns canonical asset identity, scoped address history, vendor data, and observation provenance. |
 
 ```mermaid
 flowchart TB
@@ -42,7 +44,7 @@ flowchart TB
     K --> M[Telegram polling]
 ```
 
-All components share one runtime object graph in `sentinel start`. Command renderers read structured command data and do not trigger scans.
+All components share one runtime object graph in `sentinel start`. Command renderers read structured command data and do not trigger scans or vendor lookups. Discovery hostname enrichment is opt-in through `--resolve-hostnames`; when selected with `--persist`, resolved observations use the same persistence sink.
 
 ## Data Flow
 
@@ -51,7 +53,24 @@ All components share one runtime object graph in `sentinel start`. Command rende
 3. Transition events are published through `EventBus`.
 4. `AlertEngine` creates alerts and records them in bounded `AlertHistory`.
 5. `NotificationManager` sends independently to Discord and Telegram.
-6. `CommandHandler` reads the same registry/history for remote commands.
+6. `CommandHandler` reads the live registry, durable assets, and history for remote commands.
+
+## Target service boundaries
+
+The long-term SIEM direction uses a small number of logical boundaries inside the monorepo:
+
+- `sentinel-collector`: discovery, ZTE, hostname, syslog, Suricata, and future sensor inputs.
+- `sentinel-event`: event validation, normalization, deduplication, retention, and durable event storage.
+- `sentinel-detection`: versioned deterministic rules, correlation, alerts, and incident state.
+- `sentinel-api`: authenticated asset, event, alert, incident, and administration APIs.
+- `sentinel-notifier`: Discord, Telegram, retry, and delivery policy handling.
+- `sentinel-web`: dashboard and investigation UI consuming the API.
+
+These are ownership boundaries first, not an immediate six-process deployment. Extraction should follow stable event contracts, persistence ownership, and an operational need for independent failure or scaling.
+
+## Gateway and IDS direction
+
+Sentinel may later route an isolated room network between separate interfaces or VLANs and collect firewall and Suricata telemetry. The implementation must first use passive monitoring and detection-only IDS on an isolated test segment. Inline blocking requires an explicit rollout, independent recovery path, reversible firewall changes, bounded and auditable automated actions, and documented fail-open/fail-closed behavior. Sentinel cannot observe traffic that does not traverse its gateway or an equivalent mirror/TAP.
 
 ## Configuration
 
@@ -63,4 +82,4 @@ The supported development workflow is a Python virtual environment and one integ
 
 ## Future Work
 
-REST API, database persistence, dashboards, Prometheus/Grafana integration, SNMP, and distributed discovery remain future extensions.
+Canonical `SecurityEvent` ingestion, detection/correlation, REST APIs, dashboards, Prometheus/Grafana integration, Suricata/Zeek telemetry, gateway enforcement, and distributed discovery remain future milestones. The next gate is verified PostgreSQL behavior and completion of remaining Milestone 1 evidence; no live network topology is changed by this development work.

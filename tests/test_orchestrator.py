@@ -114,6 +114,43 @@ class TestDiscoveryOrchestrator(unittest.TestCase):
         with self.assertRaises(ValueError):
             DiscoveryOrchestrator("10.0.0.0/24", methods=["bogus"])
 
+    @patch("services.discovery.orchestrator.ARPScanner")
+    @patch("services.discovery.orchestrator.ICMPScanner")
+    def test_optional_hostname_resolver_enriches_merged_results(self, mock_icmp_cls, mock_arp_cls):
+        mock_arp_cls.return_value.scan.return_value = [
+            DiscoveredDevice("10.0.0.7", mac_address="aa:aa:aa:aa:aa:aa", discovery_source="arp")
+        ]
+        mock_icmp_cls.return_value.scan.return_value = []
+        resolver = MagicMock()
+        resolver.resolve_all.side_effect = lambda devices: [
+            DiscoveredDevice(
+                devices[0].ip_address,
+                mac_address=devices[0].mac_address,
+                hostname="printer.local",
+                discovery_source=devices[0].discovery_source,
+                discovered_at=devices[0].discovered_at,
+            )
+        ]
+
+        from services.discovery.orchestrator import DiscoveryOrchestrator
+
+        results = DiscoveryOrchestrator("10.0.0.0/24", methods=["arp"], hostname_resolver=resolver).scan()
+        self.assertEqual(results[0].hostname, "printer.local")
+        resolver.resolve_all.assert_called_once()
+
+    @patch("services.discovery.orchestrator.ARPScanner")
+    @patch("services.discovery.orchestrator.ICMPScanner")
+    def test_hostname_resolver_failure_does_not_abort_discovery(self, mock_icmp_cls, mock_arp_cls):
+        mock_arp_cls.return_value.scan.return_value = []
+        mock_icmp_cls.return_value.scan.return_value = [DiscoveredDevice("10.0.0.8", discovery_source="icmp")]
+        resolver = MagicMock()
+        resolver.resolve_all.side_effect = RuntimeError("resolver unavailable")
+
+        from services.discovery.orchestrator import DiscoveryOrchestrator
+
+        results = DiscoveryOrchestrator("10.0.0.0/24", hostname_resolver=resolver).scan()
+        self.assertEqual([device.ip_address for device in results], ["10.0.0.8"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ HostnameResolver
 - `ICMPScanner` probes target IPs with the system ping command. It supports CIDR or explicit IP lists, configurable concurrency, and ping timeout.
 - `DiscoveryOrchestrator` runs selected scanners, isolates scanner failures, deduplicates by IP, and prefers ARP MAC data when ARP and ICMP report the same address.
 - `HostnameResolver` enriches records without changing scanner semantics. It attempts PTR, Windows NetBIOS, mDNS, and an optional LLMNR hook. Failures are non-fatal and unresolved hostnames remain `None`.
+- `DiscoveryOrchestrator` accepts an optional hostname resolver. The CLI enables it explicitly with `--resolve-hostnames`; when persistence is enabled, the resolved merged records are sent through the same persistence sink. Hostname resolution remains opt-in because it can perform local network lookups.
 - `DeviceRegistry` is the canonical in-memory store used by the ZTE monitoring/runtime path. Discovery records and ZTE records are related models; discovery itself does not persist to a database.
 
 ## MAC vendor enrichment

@@ -29,6 +29,7 @@ class DiscoveryOrchestrator:
         icmp_kwargs: Optional[Dict] = None,
         arp_kwargs: Optional[Dict] = None,
         observation_sink=None,
+        hostname_resolver=None,
     ):
         self.target = target
         if methods is None:
@@ -43,6 +44,7 @@ class DiscoveryOrchestrator:
         self.icmp_kwargs = icmp_kwargs or {}
         self.arp_kwargs = arp_kwargs or {}
         self.observation_sink = observation_sink
+        self.hostname_resolver = hostname_resolver
 
     def scan(self) -> List[DiscoveredDevice]:
         """Run the configured scanners and return merged DiscoveredDevice list."""
@@ -73,6 +75,11 @@ class DiscoveryOrchestrator:
             except Exception:
                 logger.exception("Discovery observation persistence failed")
         merged = self._merge_by_ip(arp_results, icmp_results)
+        if self.hostname_resolver is not None:
+            try:
+                merged = self.hostname_resolver.resolve_all(merged)
+            except Exception:
+                logger.exception("Hostname enrichment failed")
         if self.observation_sink is not None:
             try:
                 self.observation_sink(merged)
