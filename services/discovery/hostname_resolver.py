@@ -474,6 +474,7 @@ class HostnameResolver:
 
         try:
             details = self.resolve_with_details(device.ip_address)
+            device.metadata["hostname_resolution"] = details
             hostname = details["hostname"]
         except Exception:
             logger.exception("unexpected error resolving hostname for %s", device.ip_address)

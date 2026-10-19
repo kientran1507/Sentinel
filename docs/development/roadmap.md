@@ -6,13 +6,15 @@ Implemented: ARP/ICMP discovery, opt-in hostname enrichment, ZTE monitoring and 
 
 See [project status](../PROJECT_STATUS.md) for current boundaries. These features do not establish production readiness.
 
-## Persistence Priorities
+## Milestone 1 Complete
 
-1. Expand the passing PostgreSQL integration coverage to concurrent independent connections and network-outage recovery. Initialization, migration upgrade/rollback, reassignment rollback, commit recovery, and reopened history queries are now verified.
-2. Verify atomic observation writes against PostgreSQL and independent connections; define retry and replay behavior. SQLite rollback and shared-storage replay tests now cover the inventory transaction.
-3. Decide scope-aware MAC correlation, full address intervals, field precedence/freshness, and idempotency semantics.
-4. Verify inventory and live-state behavior across restart and partial persistence failures.
-5. Define retention and tested backup/restore. Add explicit SQLite import only if required.
+The [acceptance matrix](milestone-1-acceptance.md) verifies inventory identity, separate assignment history, provenance, scoped replay suppression, stale-input handling, independent writers, migrations, commands after reopen/failure, and PostgreSQL disconnected-session recovery. The [identity contract](../architecture/asset-identity.md) records global MAC policy and ambiguity limits.
+
+## Next Milestone
+
+Milestone 2 is next: design the canonical `SecurityEvent` contract and its compatibility boundary with existing device events before changing ingestion. No Milestone 2 implementation is included in the Milestone 1 checkpoint.
+
+Before production reliance, separately validate backup/restore, upgrades with stopped writers, platform delivery, timeout behavior during real network partitions, retention, and deployment hardening. Durable retry queues and cross-backend import require explicit scope; neither is implicit fallback behavior.
 
 ## Later Capabilities
 

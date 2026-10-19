@@ -31,6 +31,8 @@ Local `devices` reads a new process-local registry, normally empty. `--refresh` 
 
 Assets without a live match show `UNKNOWN`. A nonempty durable inventory does not union in live-only devices. No remote command triggers scanning or hostname/vendor lookup.
 
+If the inventory list or any address query fails, `/devices` logs the failure, discards partial inventory rows, and returns the live registry instead. After restart that registry can be empty. Failed vendor enrichment displays `Unknown`. Later reads try again; PostgreSQL can reconnect on a later operation after a broken connection is discarded. Interrupted operations are not automatically replayed.
+
 All commands require numeric user IDs in comma-separated `DISCORD_ALLOWED_USER_IDS` or `TELEGRAM_ALLOWED_USER_IDS`. Missing/malformed allowlists fail closed. Rate limiting defaults to 10 commands per user/platform in 30 seconds. Unknown commands and unsupported arguments are rejected; commands cannot execute arbitrary code or a shell.
 
 ## Platform Configuration

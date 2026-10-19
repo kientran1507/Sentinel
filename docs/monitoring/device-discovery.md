@@ -20,7 +20,7 @@ Replace example targets/interface with the intended LAN. Defaults: ICMP, concurr
 
 Both `--resolve-hostnames` and `--persist` only take effect with `--orchestrator`. The helper does not load repository `.env`; export [storage variables](../architecture/persistent-storage.md) in its process environment.
 
-The persistence sink receives raw ARP/ICMP results and final merged results after optional resolution. It does not emit a separate pre-resolution merged snapshot or dedicated resolver-method evidence. Repeated derived keys can suppress rows. Storage initialization errors stop the helper; later sink failures are isolated.
+The persistence sink receives raw ARP/ICMP results independently and final merged results after optional resolution. Merged timestamps use the newest contributing observation so enrichment is not treated as stale. Resolver method/attempts travel in discovery metadata into observation history. It does not emit a separate pre-resolution merged snapshot. Canonical scoped replay keys suppress exact repeats. Storage initialization errors stop the helper; later sink failures are isolated without skipping the other raw source.
 
 Hostname diagnostics: `python scripts/test_hostname_resolution.py <ip>` or `--network <cidr>`.
 

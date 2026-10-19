@@ -69,11 +69,11 @@ class DiscoveryOrchestrator:
 
         # Merge results by IP
         if self.observation_sink is not None:
-            try:
-                self.observation_sink(arp_results)
-                self.observation_sink(icmp_results)
-            except Exception:
-                logger.exception("Discovery observation persistence failed")
+            for batch in (arp_results, icmp_results):
+                try:
+                    self.observation_sink(batch)
+                except Exception:
+                    logger.exception("Discovery observation persistence failed")
         merged = self._merge_by_ip(arp_results, icmp_results)
         if self.hostname_resolver is not None:
             try:
@@ -117,7 +117,7 @@ class DiscoveryOrchestrator:
                     timestamps.append(d.discovered_at)
 
             source_str = ",".join(sorted(sources))
-            discovered_at = min(timestamps) if timestamps else None
+            discovered_at = max(timestamps) if timestamps else None
 
             merged.append(
                 DiscoveredDevice(

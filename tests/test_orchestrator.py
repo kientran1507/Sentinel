@@ -1,10 +1,25 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from services.discovery.models import DiscoveredDevice
 
 
 class TestDiscoveryOrchestrator(unittest.TestCase):
+    @patch("services.discovery.orchestrator.ARPScanner")
+    @patch("services.discovery.orchestrator.ICMPScanner")
+    def test_raw_sink_failure_does_not_skip_other_source_or_merged_evidence(self, icmp, arp):
+        from services.discovery.orchestrator import DiscoveryOrchestrator
+        older = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        newer = older + timedelta(seconds=1)
+        arp.return_value.scan.return_value = [DiscoveredDevice("198.51.100.10", discovery_source="arp", discovered_at=older)]
+        icmp.return_value.scan.return_value = [DiscoveredDevice("198.51.100.10", discovery_source="icmp", discovered_at=newer)]
+        sink = MagicMock(side_effect=[RuntimeError("unavailable"), None, None])
+        with self.assertLogs("services.discovery.orchestrator", level="ERROR"):
+            result = DiscoveryOrchestrator("198.51.100.0/24", observation_sink=sink).scan()
+        self.assertEqual(sink.call_count, 3)
+        self.assertEqual(result[0].discovered_at, newer)
+
     @patch("services.discovery.orchestrator.ARPScanner")
     @patch("services.discovery.orchestrator.ICMPScanner")
     def test_arp_only(self, mock_icmp_cls, mock_arp_cls):

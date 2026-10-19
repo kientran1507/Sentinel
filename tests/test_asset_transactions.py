@@ -32,7 +32,7 @@ class TestAssetTransactions(unittest.TestCase):
         with self.storage.transaction() as connection:
             return {
                 table: [tuple(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY 1")]
-                for table in ("assets", "asset_addresses", "asset_observations")
+                for table in ("assets", "asset_addresses", "asset_observations", "asset_address_assignments")
             }
 
     def reject_observations(self):
@@ -85,7 +85,7 @@ class TestAssetTransactions(unittest.TestCase):
         self.repository.record_observation(device)
         before = self.snapshot()
         self.assertEqual({table: len(rows) for table, rows in before.items()}, {
-            "assets": 1, "asset_addresses": 1, "asset_observations": 1,
+            "assets": 1, "asset_addresses": 1, "asset_observations": 1, "asset_address_assignments": 1,
         })
         self.storage.close()
         self.storage.initialize()

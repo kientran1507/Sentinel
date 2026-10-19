@@ -22,19 +22,24 @@ Define service boundaries, domain models, configuration, schema/versioning conve
 
 Turn temporary observations into persistent inventory. The [identity contract](docs/architecture/asset-identity.md) and [storage ADR](docs/adr/0001-postgresql-primary-with-explicit-sqlite-development-backend.md) describe accepted direction and current limitations.
 
-- [ ] Verify PostgreSQL schema initialization, upgrades, rollback, and connection lifecycle.
-- [x] Run isolated PostgreSQL integration tests for initialization, upgrades, rollback, inventory, and historical queries. Network-loss recovery and cross-connection concurrency remain open.
-- [ ] Complete asset, address, and observation repository boundaries and atomic reconciliation.
-- [x] Make each asset/address/observation write atomic; verify rollback and shared-storage replay with temporary SQLite tests. PostgreSQL and cross-connection validation remain open.
-- [ ] Preserve opaque asset IDs across IP changes; handle provisional identities, invalid MACs, randomized MACs, and network scope.
-- [ ] Keep IP reuse distinct from asset merging and preserve address-assignment history.
-- [ ] Persist ARP, ICMP, hostname, vendor, and ZTE evidence with useful provenance.
-- [ ] Track first/last seen and distinguish durable inventory from live presence.
-- [ ] Verify bot `/devices` after restart, with unknown live status and database failures.
-- [ ] Test conflicts, duplicates, out-of-order input, concurrent writes, and recovery on both backends.
-- [ ] Document identity rules and resolve remaining discovery issues before accepting v0.2.
+Status: implementation acceptance complete on 2026-10-19; see the [acceptance matrix](docs/development/milestone-1-acceptance.md). This is not production deployment, arbitrary network-partition, or backup/restore certification.
+
+- [x] Verify PostgreSQL schema initialization, upgrades, rollback, and connection lifecycle, including recovery on a later operation after a disconnected session.
+- [x] Run isolated PostgreSQL integration tests for initialization, upgrades, rollback, inventory, historical queries, and test-owned session loss.
+- [x] Complete asset, address, and observation repository boundaries and atomic reconciliation.
+- [x] Make each asset/address/observation write atomic; verify rollback and shared-storage replay with temporary SQLite tests and PostgreSQL integration tests.
+- [x] Serialize PostgreSQL inventory reconciliation across independent connections; verify discovery, promotion, IP conflicts, metadata merging, rollback, and bounded lock-timeout recovery.
+- [x] Preserve opaque IDs across IP changes and provisional promotion; reject invalid MACs. Retain global MAC identity with scoped IP/evidence; changed/randomized MACs remain distinct rather than guessed physical-device merges.
+- [x] Keep IP reuse distinct from asset merging and preserve separate address-assignment intervals from upgrade onward; retain legacy summaries without inventing collapsed history.
+- [x] Persist raw ARP/ICMP, enriched hostname/resolver, vendor, and ZTE evidence with source/time metadata and canonical scoped replay keys.
+- [x] Track min/max first/last seen, protect current fields/assignments against stale evidence, and distinguish durable inventory from live presence.
+- [x] Verify the shared bot `/devices` handler after storage reopen with a fresh registry, unknown live status, live MAC overlays, and inventory/address-query failures on SQLite and PostgreSQL. Live platform delivery remains deployment validation.
+- [x] Test conflicts, duplicates, out-of-order input, independent concurrent writes, migration rollback, and reopen/query recovery on both backends, plus disconnected-session recovery on PostgreSQL.
+- [x] Document identity/freshness/replay rules and discovery provenance/failure isolation for the v0.2 inventory scope. No package release or production rollout is implied.
 
 Acceptance: inventory survives restart, sufficient identity evidence prevents duplicate assets, source history is retained, and PostgreSQL behavior is verified. Do not begin Milestone 2 until these persistence requirements are stable.
+
+Accepted limits: global MAC correlation cannot distinguish spoofed/reused identities; MAC-less evidence cannot follow an IP change without more evidence; equal-time conflicts use serialized ingestion order. Late evidence is retained without retroactively reconstructing assignment periods. Retention, durable retry queues, backup/restore drills, and full deployment hardening remain operational/later-milestone work.
 
 ## Milestone 2: Monitoring and Event Pipeline
 
@@ -99,7 +104,7 @@ Acceptance: demonstrate telemetry -> collection -> normalization -> persistence 
 
 ## Development Sequence
 
-1. Finish Milestone 1 and verify existing behavior remains covered.
+1. Maintain the completed Milestone 1 contract and its regression coverage.
 2. Introduce the canonical event contract and persistence.
 3. Improve detections, alert lifecycle, and incidents.
 4. Add API/dashboard and extract processes only when justified.

@@ -20,6 +20,10 @@ class StorageNotInitializedError(StorageError):
 class Storage(ABC):
     """Small application-facing boundary for persistent storage."""
 
+    def inventory_transaction(self) -> AbstractContextManager[object]:
+        """Own an inventory write; backends may serialize independent writers."""
+        return self.transaction()
+
     def json_text_expression(self, column: str, field: str) -> str:
         """Build a JSON text lookup for trusted, internal SQL identifiers."""
         raise NotImplementedError

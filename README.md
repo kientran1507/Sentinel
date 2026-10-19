@@ -2,6 +2,8 @@
 
 Sentinel discovers LAN devices, monitors ZTE H3601P client presence, records inventory and history, and sends alerts through Discord and Telegram. It runs as one Python process with modular discovery, storage, alerting, and command services.
 
+Milestone 1 inventory implementation is complete: stable asset IDs, preserved assignment intervals, source evidence, replay/freshness rules, and tested PostgreSQL recovery. See the [acceptance matrix](docs/development/milestone-1-acceptance.md) and [deployment limits](docs/PROJECT_STATUS.md). Milestone 2 has not started.
+
 ## Setup
 
 Use a Python version that supports the repository's modern type annotations (Python 3.10 or later). The package metadata still declares an older minimum and needs a separate compatibility review.

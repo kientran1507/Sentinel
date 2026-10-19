@@ -8,6 +8,7 @@ from typing import Iterator, Optional, Union
 
 from .base import Storage, StorageError, StorageInitializationError, StorageNotInitializedError
 from .config import get_database_path
+from .migrations import ADDRESS_HISTORY_STATEMENTS
 
 
 PathLike = Union[str, Path]
@@ -45,6 +46,7 @@ class SQLiteStorage(Storage):
                 connection = sqlite3.connect(str(self.database_path), check_same_thread=False)
                 connection.row_factory = sqlite3.Row
                 connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("BEGIN IMMEDIATE")
                 connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS storage_metadata (
@@ -193,11 +195,15 @@ class SQLiteStorage(Storage):
                     "CREATE INDEX IF NOT EXISTS idx_alerts_severity_type "
                     "ON alerts (severity, alert_type, timestamp, alert_id)"
                 )
+                version = connection.execute("SELECT schema_version FROM storage_metadata WHERE id = 1").fetchone()
+                if version is None or version[0] < 6:
+                    for statement in ADDRESS_HISTORY_STATEMENTS:
+                        connection.execute(statement)
                 connection.execute(
-                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 5)"
+                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 6)"
                 )
                 connection.execute(
-                    "UPDATE storage_metadata SET schema_version = 5 WHERE id = 1 AND schema_version < 5"
+                    "UPDATE storage_metadata SET schema_version = 6 WHERE id = 1 AND schema_version < 6"
                 )
                 connection.commit()
                 self._connection = connection
@@ -233,6 +239,12 @@ class SQLiteStorage(Storage):
                 connection.close()
             except sqlite3.Error as exc:
                 raise StorageError("could not close SQLite storage") from exc
+
+    @contextmanager
+    def inventory_transaction(self):
+        with self.transaction() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            yield connection
 
     def _require_connection(self) -> sqlite3.Connection:
         if self._connection is None:

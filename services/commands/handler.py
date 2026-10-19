@@ -121,31 +121,13 @@ class CommandHandler:
     def _devices(self, command_name: str = "devices", args=None) -> CommandResponse:
         devices = sorted(self.registry.get_all(), key=lambda device: (device.hostname or "unknown", device.mac_address or ""))
         rows = []
-        persisted = None
         if self.asset_repository is not None:
             try:
-                candidate = self.asset_repository.list()
-                persisted = candidate if isinstance(candidate, list) else None
+                rows = self._inventory_device_rows(devices)
+                if rows:
+                    return self._device_response(rows, command_name, separator="—")
             except Exception:
                 logger.exception("Failed to read persistent inventory")
-        if persisted:
-            live_by_mac = {(device.mac_address or "").lower(): device for device in devices if device.mac_address}
-            for asset in persisted:
-                live = live_by_mac.get((asset.mac_address or "").lower())
-                state = (live.status if live else "unknown").upper()
-                addresses = self.asset_repository.list_addresses(asset.asset_id)
-                active = next(
-                    (address for address in addresses if getattr(address, "assignment_ended", None) is None),
-                    addresses[0] if addresses else None,
-                )
-                rows.append({
-                    "hostname": live.hostname if live and live.hostname else asset.hostname,
-                    "ip": live.ip_address if live else active.ip_address if active else None,
-                    "mac": (asset.mac_address or "").upper() or None,
-                    "vendor": asset.vendor or "Unknown",
-                    "state": state,
-                })
-            return self._device_response(rows, command_name, separator="—")
         for device in devices:
             state = (device.status or "unknown").upper()
             vendor = None
@@ -159,6 +141,29 @@ class CommandHandler:
                     logger.exception("Failed to read asset vendor for device: mac=%s", device.mac_address)
             rows.append({"hostname": device.hostname, "ip": device.ip_address, "mac": (device.mac_address or "").upper() or None, "vendor": vendor or "Unknown", "state": state})
         return self._device_response(rows, command_name)
+
+    def _inventory_device_rows(self, devices) -> list[dict]:
+        persisted = self.asset_repository.list()
+        if not isinstance(persisted, list) or not persisted:
+            return []
+        live_by_mac = {(device.mac_address or "").lower(): device for device in devices if device.mac_address}
+        rows = []
+        for asset in persisted:
+            live = live_by_mac.get((asset.mac_address or "").lower())
+            state = (live.status if live else "unknown").upper()
+            addresses = self.asset_repository.list_addresses(asset.asset_id)
+            active = next(
+                (address for address in addresses if getattr(address, "assignment_ended", None) is None),
+                addresses[0] if addresses else None,
+            )
+            rows.append({
+                "hostname": live.hostname if live and live.hostname else asset.hostname,
+                "ip": live.ip_address if live else active.ip_address if active else None,
+                "mac": (asset.mac_address or "").upper() or None,
+                "vendor": asset.vendor or "Unknown",
+                "state": state,
+            })
+        return rows
 
     @staticmethod
     def _device_response(rows: list[dict], command_name: str, *, separator: str = "—") -> CommandResponse:

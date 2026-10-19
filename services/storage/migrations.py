@@ -11,6 +11,28 @@ class Migration:
     statements: tuple[str, ...]
 
 
+ADDRESS_HISTORY_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS asset_address_assignments (
+        assignment_id TEXT PRIMARY KEY, asset_id TEXT NOT NULL,
+        network_scope TEXT NOT NULL, ip_address TEXT NOT NULL, interface TEXT, source TEXT,
+        first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+        assignment_started TEXT NOT NULL, assignment_ended TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        FOREIGN KEY (asset_id) REFERENCES assets(asset_id) ON DELETE CASCADE
+    )""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_address_assignments_active ON asset_address_assignments (network_scope, ip_address) WHERE assignment_ended IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_address_assignments_asset_time ON asset_address_assignments (asset_id, assignment_started)",
+    """INSERT INTO asset_address_assignments (
+        assignment_id, asset_id, network_scope, ip_address, interface, source,
+        first_seen, last_seen, assignment_started, assignment_ended, metadata
+    ) SELECT 'legacy:' || asset_id || ':' || ROW_NUMBER() OVER (
+        PARTITION BY asset_id ORDER BY network_scope, ip_address
+    ), asset_id, network_scope, ip_address, interface, source,
+        first_seen, last_seen, COALESCE(assignment_started, first_seen), assignment_ended, metadata
+    FROM asset_addresses""",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -72,6 +94,7 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_alerts_severity_type ON alerts (severity, alert_type, timestamp, alert_id)",
         ),
     ),
+    Migration(2, "preserve address assignment intervals", ADDRESS_HISTORY_STATEMENTS),
 )
 
 

@@ -1,6 +1,6 @@
 # ADR 0001: PostgreSQL Production Target, SQLite Development Backend
 
-Status: accepted direction; PostgreSQL operational verification remains incomplete.
+Status: accepted; Milestone 1 implementation acceptance complete. Production backup/restore and deployment certification remain separate.
 
 ## Decision
 
@@ -12,14 +12,14 @@ Use opaque asset IDs, with MACs as correlation keys. Current global MAC uniquene
 
 ## Consequences
 
-PostgreSQL has a connection adapter and versioned initialization migration. SQLite initializes its schema through its own path. Asset observations now use one transaction spanning reconciliation, assets, addresses, and source evidence; temporary SQLite tests cover rollback. Legacy device, event, and alert writes remain independent. PostgreSQL integration validation is still required.
+PostgreSQL has a connection adapter and versioned initialization migration. SQLite initializes its schema through its own path. Asset observations use one transaction spanning reconciliation, assets, addresses, and source evidence; SQLite and PostgreSQL tests cover rollback. PostgreSQL inventory transactions serialize independent writers before identity lookup. Legacy device, event, and alert writes remain independent.
 
-Initialization failure stops runtime startup. Later persistence failures are isolated and logged, without guaranteed replay. Seven controlled PostgreSQL integration tests passed on 2026-10-19, covering migrations, rollback, inventory, and historical queries. Independent-connection concurrency, network-outage recovery, and backup/restore still need validation.
+Initialization failure stops runtime startup. Later persistence failures are isolated and logged, without guaranteed replay. PostgreSQL migration 2 and SQLite schema 6 add preserved assignment intervals, seeded from existing summaries. Controlled tests cover migration rollback, independent reconciliation, replay/freshness, provenance, inventory-command failures, and recovery after test-session termination. See the [acceptance matrix](../development/milestone-1-acceptance.md). Arbitrary network partitions and backup/restore remain deployment validation.
 
 ## Alternatives and Migration
 
 PostgreSQL-only storage would remove the zero-service development workflow. SQLite-only storage would avoid backend drift but depart from the production target.
 
-Initialize an empty PostgreSQL database explicitly. Existing SQLite files remain in place. Import, reconciliation, backup/restore, and production migration procedures require separate implementation and validation; startup does not perform them.
+Initialize an empty PostgreSQL database explicitly or let initialization apply the supported versioned upgrades to an existing PostgreSQL schema after a verified backup and writer shutdown. Existing SQLite files remain in place unless that backend is explicitly selected. Startup does not import between backends. Production backup/restore and migration rollout require separate validation.
 
 See [storage configuration and limits](../architecture/persistent-storage.md).

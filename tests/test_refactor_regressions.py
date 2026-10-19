@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from scripts.discover import to_dict
 from services.commands.handler import CommandHandler
@@ -37,6 +37,58 @@ class TestDiscoverySerialization(unittest.TestCase):
 
 
 class TestInventoryCommand(unittest.TestCase):
+    def test_address_failure_discards_partial_inventory_and_uses_live_registry(self):
+        registry = DeviceRegistry()
+        registry.upsert(ZTEDevice(
+            mac_address="02:11:22:33:44:57", ip_address="192.0.2.3",
+            hostname="live-only", status="online",
+        ))
+        repository = Mock()
+        repository.list.return_value = [
+            SimpleNamespace(asset_id=str(index), mac_address=f"02:11:22:33:44:{index:02x}",
+                            hostname=f"stored-{index}", vendor="Example")
+            for index in (1, 2)
+        ]
+        repository.list_addresses.side_effect = [
+            [SimpleNamespace(ip_address="192.0.2.1", assignment_ended=None)],
+            RuntimeError("address query unavailable"),
+        ]
+        repository.get_by_mac.side_effect = RuntimeError("vendor query unavailable")
+        handler = CommandHandler(registry, asset_repository=repository, allowed_users={"telegram": {"10"}})
+        with self.assertLogs("services.commands.handler", level="ERROR"):
+            response = handler.handle("/devices", platform="telegram", user_id="10")
+        self.assertTrue(response.ok)
+        self.assertEqual(response.data["total"], 1)
+        self.assertEqual(response.data["online"], 1)
+        self.assertEqual(response.data["unknown"], 0)
+        self.assertEqual(response.data["devices"][0]["hostname"], "live-only")
+        self.assertEqual(response.data["devices"][0]["vendor"], "Unknown")
+        self.assertNotIn("stored-1", response.text)
+
+    def test_address_failure_after_restart_returns_empty_live_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = SQLiteStorage(Path(directory) / "inventory.db")
+            storage.initialize()
+            try:
+                repository = AssetRepository(storage, vendor_lookup=lambda mac: None)
+                repository.record_observation(DiscoveredDevice("192.0.2.1", "02:11:22:33:44:55"))
+                storage.close()
+                storage.initialize()
+                handler = CommandHandler(
+                    DeviceRegistry(), asset_repository=repository, allowed_users={"telegram": {"10"}},
+                )
+                with patch.object(repository, "list_addresses", side_effect=RuntimeError("unavailable")):
+                    with self.assertLogs("services.commands.handler", level="ERROR"):
+                        response = handler.handle("/devices", platform="telegram", user_id="10")
+                self.assertTrue(response.ok)
+                self.assertEqual(response.data["devices"], [])
+                self.assertEqual(response.data["total"], 0)
+                recovered = handler.handle("/devices", platform="telegram", user_id="10")
+                self.assertTrue(recovered.ok)
+                self.assertEqual(recovered.data["unknown"], 1)
+            finally:
+                storage.close()
+
     def test_reopened_inventory_uses_unknown_then_live_status(self):
         with tempfile.TemporaryDirectory() as directory:
             storage = SQLiteStorage(Path(directory) / "inventory.db")
