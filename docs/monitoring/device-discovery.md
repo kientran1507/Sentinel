@@ -1,61 +1,37 @@
 # Device Discovery
 
-Sentinel's discovery path returns normalized `DiscoveredDevice` records and can combine ARP, ICMP, and hostname enrichment.
+The separate discovery helper returns `DiscoveredDevice` records. It does not start continuous ZTE monitoring or populate the integrated runtime registry.
+
+- ARP uses Scapy on the local link and may need packet privileges.
+- ICMP invokes system ping for a CIDR or explicit IP list.
+- `DiscoveryOrchestrator` isolates scanner failures and merges by IP, preferring ARP MAC evidence.
+- Optional hostname resolution tries PTR, Windows NetBIOS, and mDNS. The LLMNR reverse-lookup hook currently reports unavailable and makes no query. Failures are non-fatal; unresolved names remain empty.
+
+## CLI
 
 ```text
-CIDR or IP list
-      |
-      v
-DiscoveryOrchestrator
-   +-- ARPScanner
-   +-- ICMPScanner
-      |
-      v
-merged DiscoveredDevice records
-      |
-      v
-HostnameResolver
+python scripts/discover.py 192.0.2.0/24 --method both --orchestrator
+python scripts/discover.py 192.0.2.10,192.0.2.11 --method icmp --concurrency 20 --timeout 1
+python scripts/discover.py 192.0.2.0/24 --method arp --arp-timeout 2 --iface eth0
+python scripts/discover.py 192.0.2.0/24 --orchestrator --resolve-hostnames --persist
 ```
 
-## Components
+Replace example targets/interface with the intended LAN. Defaults: ICMP, concurrency 20, ping timeout 1 second, ARP timeout 2 seconds. `--csv <path>` writes CSV; otherwise results are printed as JSON.
 
-- `ARPScanner` uses Scapy ARP requests on the local link. It returns IP/MAC records with `discovery_source="arp"`; raw packet access may require elevated privileges or `CAP_NET_RAW`.
-- `ICMPScanner` probes target IPs with the system ping command. It supports CIDR or explicit IP lists, configurable concurrency, and ping timeout.
-- `DiscoveryOrchestrator` runs selected scanners, isolates scanner failures, deduplicates by IP, and prefers ARP MAC data when ARP and ICMP report the same address.
-- `HostnameResolver` enriches records without changing scanner semantics. It attempts PTR, Windows NetBIOS, mDNS, and an optional LLMNR hook. Failures are non-fatal and unresolved hostnames remain `None`.
-- `DiscoveryOrchestrator` accepts an optional hostname resolver. The CLI enables it explicitly with `--resolve-hostnames`; when persistence is enabled, the resolved merged records are sent through the same persistence sink. Hostname resolution remains opt-in because it can perform local network lookups.
-- `DeviceRegistry` is the canonical in-memory store used by the ZTE monitoring/runtime path. Discovery records and ZTE records are related models; discovery itself does not persist to a database.
+Both `--resolve-hostnames` and `--persist` only take effect with `--orchestrator`. The helper does not load repository `.env`; export [storage variables](../architecture/persistent-storage.md) in its process environment.
 
-## MAC vendor enrichment
+The persistence sink receives raw ARP/ICMP results and final merged results after optional resolution. It does not emit a separate pre-resolution merged snapshot or dedicated resolver-method evidence. Repeated derived keys can suppress rows. Storage initialization errors stop the helper; later sink failures are isolated.
 
-Persisted asset observations use the `mac-vendor-lookup` Python library with its local IEEE OUI cache. Enrichment is performed once at the shared asset repository boundary for ARP, ICMP records that include a MAC, and ZTE observations; it does not change asset identity, deduplication, trust, or device status. Lookup failures are non-fatal, and a previously known vendor is retained when a later lookup is empty or unavailable.
+Hostname diagnostics: `python scripts/test_hostname_resolution.py <ip>` or `--network <cidr>`.
 
-Install the dependency with the normal project setup:
+## Vendor Enrichment
 
-```powershell
-python -m pip install -e .
-```
+Asset persistence uses `mac-vendor-lookup` with its local cache. Startup and normal lookups do not download updates. Install through `python -m pip install -e .`; initialize/refresh the cache explicitly while online:
 
-The library reads `~/.cache/mac-vendors.txt` (or its supported package cache locations) during normal lookup. Sentinel does not download or refresh this file during startup, discovery, or persistence. Initialize or update it explicitly when online with:
-
-```powershell
+```text
 python -c "from mac_vendor_lookup import MacLookup; MacLookup().update_vendors()"
 ```
 
-If the local file is absent, vendor enrichment remains unavailable and discovery continues normally. Vendor identification is best-effort: unknown, malformed, multicast, locally administered, and randomized MAC addresses may have no meaningful manufacturer. A vendor result is descriptive metadata only and does not establish device identity or trust.
+The library normally checks `~/.cache/mac-vendors.txt` and supported package cache locations. Missing/failed lookups do not stop persistence; a known vendor is retained when later enrichment is empty. Vendor metadata does not establish trust or identity, especially for randomized MACs.
 
-## CLI discovery
-
-The discovery helper supports the implemented scanner options:
-
-```powershell
-python scripts/discover.py 192.168.2.0/24 --method both --orchestrator
-python scripts/discover.py 192.168.2.0/24 --method icmp --concurrency 20 --timeout 1
-python scripts/discover.py 192.168.2.0/24 --method arp --arp-timeout 2
-```
-
-Use `--csv` for CSV output. The helper prints normalized discovery results; it does not start the continuous ZTE monitor. Hostname diagnostics are available with `python scripts/test_hostname_resolution.py <ip>` or `--network <cidr>`.
-
-## Limitations
-
-ARP only reaches the local link and may require privileges. ICMP can be blocked or rate-limited. Discovery results are in memory unless passed into another runtime component. The integrated `sentinel start` command monitors ZTE client snapshots; `/devices` reads the existing registry and never triggers a fresh scan.
+ARP cannot cross routers and ICMP may be filtered. See [identity limits](../architecture/asset-identity.md) and [continuous monitoring](monitoring.md).

@@ -1,21 +1,21 @@
 # Roadmap
 
-## Implemented
+## Present Baseline
 
-- ICMP and ARP discovery with orchestration and hostname resolution
-- ZTE H3601P collection and continuous presence monitoring
-- Typed events, event bus, alert rules, bounded history, and provider-isolated notifications
-- Discord webhook and Telegram outbound notifications
-- Shared authorized command handler with Telegram polling and Discord slash commands
-- Shared integrated runtime and platform-specific command renderers
+Implemented: ARP/ICMP discovery, opt-in hostname enrichment, ZTE monitoring and presence transitions, typed device events, alert rules, Discord/Telegram integrations, SQL inventory/history repositories, and historical commands.
 
-## Next candidates
+See [project status](../PROJECT_STATUS.md) for current boundaries. These features do not establish production readiness.
 
-- Persistent device and alert storage
-- REST API and dashboard
-- Metrics collection/export and historical retention
-- Production Docker Compose/K3s manifests
-- Command pagination or refresh controls if device volume requires them
-- Additional discovery and monitoring providers
+## Persistence Priorities
 
-These are future candidates, not current runtime capabilities.
+1. Expand the passing PostgreSQL integration coverage to concurrent independent connections and network-outage recovery. Initialization, migration upgrade/rollback, reassignment rollback, commit recovery, and reopened history queries are now verified.
+2. Verify atomic observation writes against PostgreSQL and independent connections; define retry and replay behavior. SQLite rollback and shared-storage replay tests now cover the inventory transaction.
+3. Decide scope-aware MAC correlation, full address intervals, field precedence/freshness, and idempotency semantics.
+4. Verify inventory and live-state behavior across restart and partial persistence failures.
+5. Define retention and tested backup/restore. Add explicit SQLite import only if required.
+
+## Later Capabilities
+
+Canonical security-event ingestion/schema evolution, deterministic detection/correlation, REST API/dashboard, metrics export, additional collectors, and Docker/K3s packaging are future work.
+
+Gateway routing, passive IDS telemetry, and any inline enforcement need their own design and validation. Logical collector/event/detection/API/notifier/web boundaries are possible future ownership boundaries, not currently deployed services. The broader project direction is in the [project plan](../../Sentinel_Project_Plan.md).

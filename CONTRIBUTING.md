@@ -1,45 +1,23 @@
 # Contributing
 
-Thanks for contributing to Sentinel.
+## Setup and Checks
 
-## Before You Open a Pull Request
-
-- Keep changes aligned with the architecture and milestone scope.
-- Avoid implementation work unless it is explicitly part of the current milestone.
-- Update documentation when repository structure or release-facing text changes.
-
-## Workflow
-
-1. Create a focused branch for your change.
-2. Make the smallest coherent update.
-3. Verify links, images, and formatting.
-4. Open a pull request with a clear summary.
-
-## Local Setup and Tests
-
-Use the project virtual environment and editable install:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
-```
-
-Run the complete unittest suite with:
+Follow [README setup](README.md#setup), then run:
 
 ```powershell
 python -m unittest discover -s tests -p "test_*.py" -v
+python -m compileall -q services scripts tests
+git diff --check
 ```
 
-The repository currently uses `unittest`; tests mock external Discord and Telegram APIs. Do not put `.env` or provider credentials in commits. Changes to discovery, monitoring, alerts, commands, or renderers should update the corresponding documentation.
+Use temporary SQLite databases for fast tests. PostgreSQL tests require a dedicated disposable database selected through `SENTINEL_TEST_DATABASE_URL`; they can create schema and retain records. Do not point them at production.
 
-## Documentation Expectations
+## Changes
 
-- Prefer concise, technical Markdown.
-- Keep terminology consistent with the Sentinel architecture documents.
-- Use repository-relative links for markdown references.
+1. Inspect the affected code and tests, then work on a focused branch.
+2. Reuse existing models and modules; preserve monitoring, presence debouncing, commands, and notifications.
+3. Add regression coverage proportional to the change. Mock routers and external providers.
+4. Update the relevant guide to match the implementation.
+5. Review the diff and open a pull request using the [template](.github/PULL_REQUEST_TEMPLATE.md).
 
-## Review Notes
-
-- Use the pull request template in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md).
-- Keep public-facing language professional and milestone-appropriate.
+Keep credentials, local databases, and `.env` out of commits. Use repository-relative documentation links and distinguish working features from planned milestones. See the [project plan](Sentinel_Project_Plan.md) for scope and [development guide](docs/development/contributing.md) for test areas.

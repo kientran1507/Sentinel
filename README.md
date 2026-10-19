@@ -1,130 +1,70 @@
 # Sentinel
 
-Sentinel is a self-hosted LAN discovery and device-presence monitoring system for homelabs and small networks. It discovers devices with ICMP and ARP, enriches them with hostnames, monitors ZTE H3601P client state, emits transition events, sends alerts through Discord and Telegram, and accepts authorized monitoring commands from both platforms.
+Sentinel discovers LAN devices, monitors ZTE H3601P client presence, records inventory and history, and sends alerts through Discord and Telegram. It runs as one Python process with modular discovery, storage, alerting, and command services.
 
-## Current Architecture
+## Setup
 
-The production path is one Python process with shared in-memory state:
-
-```mermaid
-flowchart TB
-    R[Sentinel Runtime] --> D[Discovery]
-    R --> M[ZTEMonitor]
-    R --> C[CommandService]
-    D --> REG[DeviceRegistry]
-    M --> PT[PresenceTracker]
-    PT --> REG
-    PT --> E[DeviceEvent]
-    E --> BUS[EventBus]
-    BUS --> AE[AlertEngine]
-    AE --> AH[AlertHistory]
-    AE --> NM[NotificationManager]
-    C --> CH[CommandHandler]
-    CH --> REG
-    CH --> AH
-    C --> TG[Telegram Bot API]
-    C --> DC[Discord Gateway / Slash Commands]
-    NM --> TN[Telegram notifications]
-    NM --> DN[Discord webhook]
-```
-
-The runtime creates one `DeviceRegistry`, `PresenceTracker`, `EventBus`, `AlertEngine`, `AlertHistory`, and `CommandHandler`. Commands therefore see the same devices and alerts that monitoring produces. The registry and alert history are currently in memory; a separate process cannot see another process's live state.
-
-## Implemented Features
-
-- ICMP and ARP discovery coordinated by `DiscoveryOrchestrator`
-- Hostname enrichment through reverse DNS, NetBIOS, mDNS, and LLMNR hooks
-- ZTE H3601P authenticated DHCP and mesh collection
-- Presence tracking with online, offline, discovery, and recovery transitions
-- Offline threshold/debouncing so repeated missed polls do not duplicate alerts
-- Typed `DeviceEvent`, `EventBus`, rule-based `AlertEngine`, and bounded `AlertHistory`
-- Discord webhook and Telegram Bot API outbound notifications
-- Authorized `/help`, `/devices`, `/status`, and `/alerts` commands
-- Discord native slash commands and Telegram long polling
-- Discord embeds and Telegram escaped HTML command output
-
-## Quick Start
+Use a Python version that supports the repository's modern type annotations (Python 3.10 or later). The package metadata still declares an older minimum and needs a separate compatibility review.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
-Copy-Item .env.example .env
+```
+
+On Linux, activate with `source .venv/bin/activate`. Create a local `.env` from `.env.example` only if it does not already exist. Configure the router and desired notification providers, then run:
+
+```powershell
 python -m scripts.sentinel start
 ```
 
-On Linux, activate with `source .venv/bin/activate`. `sentinel start` is also available after editable installation. The integrated runtime starts monitoring, event processing, alerting, and both configured command adapters together.
+The installed `sentinel start` command is equivalent. The runtime loads the repository-root `.env` without overriding variables already in the process environment. Keep local configuration and inventory databases out of Git.
 
 ## Configuration
 
-Set values in `.env`; never commit that file. See [.env.example](.env.example) and the [architecture guide](docs/architecture/overview.md#configuration).
-
-| Variable | Purpose |
+| Variable | Use |
 | --- | --- |
-| `ZTE_ROUTER_URL` | ZTE H3601P base URL |
-| `ZTE_USERNAME` / `ZTE_PASSWORD` | Router credentials |
-| `ZTE_RSA_PUBLIC_KEY` | Optional router RSA public key |
-| `DISCORD_WEBHOOK_URL` | Outbound Discord alert webhook |
-| `DISCORD_BOT_TOKEN` | Inbound Discord Gateway/slash-command bot |
-| `DISCORD_ALLOWED_USER_IDS` | Comma-separated numeric Discord user IDs |
-| `DISCORD_GUILD_ID` | Optional numeric guild ID for fast command sync |
-| `TELEGRAM_BOT_TOKEN` | Telegram notifications and command polling |
-| `TELEGRAM_CHAT_ID` | Outbound Telegram notification chat |
-| `TELEGRAM_ALLOWED_USER_IDS` | Comma-separated numeric Telegram user IDs |
+| `ZTE_ROUTER_URL` | Router base URL |
+| `ZTE_USERNAME`, `ZTE_PASSWORD` | Required router credentials |
+| `ZTE_RSA_PUBLIC_KEY` | Optional RSA public key; literal newline escapes are supported by the runtime loader |
+| `SENTINEL_STORAGE_BACKEND` | `sqlite` or `postgresql`; defaults to `sqlite` |
+| `SENTINEL_DATABASE_PATH` | SQLite path; defaults to `data/sentinel.db` relative to the working directory |
+| `SENTINEL_DATABASE_URL` | Required PostgreSQL connection string when that backend is selected |
+| `SENTINEL_NETWORK_SCOPE` | Logical network boundary; defaults to `default` |
+| `DISCORD_WEBHOOK_URL` | Outbound Discord alerts |
+| `DISCORD_BOT_TOKEN` | Inbound Discord slash commands |
+| `DISCORD_ALLOWED_USER_IDS` | Comma-separated numeric command-user IDs |
+| `DISCORD_GUILD_ID` | Optional guild for faster command synchronization |
+| `TELEGRAM_BOT_TOKEN` | Telegram commands and notifications |
+| `TELEGRAM_CHAT_ID` | Outbound notification destination |
+| `TELEGRAM_ALLOWED_USER_IDS` | Comma-separated numeric command-user IDs |
+| `SENTINEL_TEST_DATABASE_URL` | Dedicated PostgreSQL integration-test database |
 
-`DISCORD_WEBHOOK_URL` is Sentinel-to-Discord outbound delivery. `DISCORD_BOT_TOKEN` is Discord-to-Sentinel inbound control. The bot uses application commands and does not require the Message Content privileged intent.
+PostgreSQL is the intended production backend; SQLite supports local development. Backend failures never trigger an automatic switch or inventory import. PostgreSQL behavior still needs broader integration verification. See [storage](docs/architecture/persistent-storage.md).
 
-Persistent storage is selected explicitly. `SENTINEL_STORAGE_BACKEND=sqlite` uses `SENTINEL_DATABASE_PATH` for local development; `SENTINEL_STORAGE_BACKEND=postgresql` requires `SENTINEL_DATABASE_URL`. PostgreSQL is the production backend. Sentinel never imports or falls back between database files automatically.
+## Usage
 
-## Commands
+- Use `/devices`, `/status`, `/alerts`, `/events`, `/alert-history`, and `/help` from an authorized Discord or Telegram account.
+- `/devices` uses persistent assets when available and overlays current registry status. It never starts a scan.
+- `python -m scripts.sentinel devices --refresh --json` polls the router once. The standalone CLI device command uses its own registry, not the persistent-inventory command handler.
+- Run an explicit discovery scan with `python scripts/discover.py <CIDR> --method both --orchestrator`.
+- Add `--resolve-hostnames` for enrichment and `--persist` for storage. These options apply to the orchestrator path. Unlike the integrated runtime, the discovery helper does not load `.env`; it uses process environment configuration.
 
-After configuring numeric allowlists, start the integrated runtime and use `/help`, `/devices`, `/status`, and `/alerts` from Telegram or Discord. `/devices` reads the current shared `DeviceRegistry`; it does not start a scan. Discord uses embeds, while Telegram uses escaped HTML entries rather than fixed-width tables.
+See [commands](docs/commands.md) and [discovery](docs/monitoring/device-discovery.md) for options and limits.
 
-CLI commands are documented in [CLI and commands](docs/commands.md).
-
-## Testing
-
-Use the project virtual environment and run:
+## Development
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-See [testing and development](docs/development/contributing.md) for focused commands and environment notes.
-
-## Repository Layout
-
-```text
-sentinel/
-├── docs/
-├── infrastructure/
-├── services/
-├── configs/
-├── scripts/
-├── tests/
-├── examples/
-├── diagrams/
-├── .github/
-├── README.md
-├── CHANGELOG.md
-└── LICENSE
-```
+Tests use mocks and temporary SQLite databases. The PostgreSQL test requires a dedicated test DSN and is skipped when it is absent. Read [contributing](CONTRIBUTING.md) before changing behavior.
 
 ## Documentation
 
-- [Architecture](docs/architecture/overview.md)
-- [Discovery](docs/monitoring/device-discovery.md)
-- [Monitoring](docs/monitoring/monitoring.md)
-- [Alerts and notifications](docs/monitoring/alerts.md)
-- [Commands](docs/commands.md)
-- [Deployment status](docs/deployment/docker.md)
-- [Troubleshooting](docs/troubleshooting/common-issues.md)
-- [Release notes](docs/releases/v0.1.0.md)
+- [Architecture](docs/architecture/overview.md), [components](docs/architecture/components.md), and [asset identity](docs/architecture/asset-identity.md)
+- [Monitoring](docs/monitoring/monitoring.md), [alerts](docs/monitoring/alerts.md), and [troubleshooting](docs/troubleshooting/common-issues.md)
+- [Project status](docs/PROJECT_STATUS.md) and [long-term plan](Sentinel_Project_Plan.md)
+- [Deployment](docs/deployment/docker.md) and [release history](CHANGELOG.md)
 
-## Future Work
-
-REST API, persistent storage, dashboards, metrics export, pagination/buttons, and production Docker/K3s manifests remain future work unless separately implemented. The existing deployment documents describe those targets without claiming they are available today.
-
-## License
-
-This project is licensed under the MIT License.
+REST API, dashboards, metrics export, and production container manifests remain planned work. License: [MIT](LICENSE).

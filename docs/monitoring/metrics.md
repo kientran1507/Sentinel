@@ -1,5 +1,7 @@
-# Metrics
+# Metrics Status
 
-Sentinel currently tracks operational state in memory rather than exposing a metrics backend. Available runtime values include registry device counts, device status, `first_seen`, `last_seen`, missed-poll counters, monitor lifecycle state, event transitions, and bounded recent alert history.
+Sentinel exposes operational state through commands and logs: live device counts/status, first/last seen values, missed-poll counters, monitor lifecycle, transitions, and recent alerts.
 
-There is no Prometheus endpoint, database retention, dashboard, or historical metrics API yet. Metrics export and retention are future work.
+SQL stores inventory observations, events, and alerts. That persistence is not a metrics time-series backend, and no retention cleanup is implemented.
+
+No Prometheus endpoint/exporter, Grafana integration, dashboard, or historical metrics API is supplied. See [commands](../commands.md) and [storage](../architecture/persistent-storage.md) for available queries.

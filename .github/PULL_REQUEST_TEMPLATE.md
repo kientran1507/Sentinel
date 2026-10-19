@@ -1,11 +1,11 @@
 # Summary
 
-Summarize the change and the milestone it supports.
+Describe the problem, resulting behavior, and milestone scope.
 
 # Testing
 
-List the checks you ran or note why none were needed.
+List checks and results, including skipped tests and required services.
 
 # Notes
 
-Add any reviewer context, rollout notes, or follow-up items.
+Include compatibility, rollout, documentation, and follow-up notes when relevant. Exclude credentials and local inventory data.

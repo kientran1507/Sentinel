@@ -1,29 +1,37 @@
-# Common Issues
+# Troubleshooting
 
-## `/devices` is empty
+## Empty or Unexpected Devices
 
-Run `python -m scripts.sentinel start`, not a separately started command process, when you need live monitor state. The integrated runtime creates one shared `DeviceRegistry`; a separate Python process has an independent empty registry. Wait for the ZTE baseline poll to complete.
+Remote `/devices` uses durable inventory when nonempty, with live MAC matches overlaid. Unmatched assets show `UNKNOWN` after restart. Live-only devices are not unioned into a nonempty persisted list. Wait for a successful ZTE baseline and check persistence errors.
+
+Local `sentinel devices` uses a new process-local registry; `--refresh` polls ZTE once. It does not read another process or the database. See [commands](../commands.md).
+
+## Storage Startup or Write Errors
+
+Check backend selection, permissions/path for SQLite, or DSN/reachability and psycopg installation for PostgreSQL. An unset backend selects SQLite; PostgreSQL never falls back to it. Relative SQLite paths depend on the current working directory.
+
+Initialization failure stops startup; later write failures are logged and isolated. Asset/address/observation updates roll back together, but preceding legacy device writes and subsequent event/alert writes are independent. Preserve database files and avoid treating a restart as a repair. PostgreSQL migration and rollback tests pass; network-outage recovery still needs verification. See [storage](../architecture/persistent-storage.md).
+
+## Discovery Flags Have No Effect
+
+Use `--orchestrator` with `--persist` or `--resolve-hostnames`. The discovery helper does not load repository `.env`; provide storage settings in its process environment. ARP needs Scapy, packet access, and local-link reachability; ICMP may be filtered.
 
 ## Telegram HTTP 409
 
-`Conflict: terminated by other getUpdates request` means another process or deployment is polling the same Telegram bot token. Stop the competing consumer and keep only one long-polling process active.
+`Conflict: terminated by other getUpdates request` indicates competing pollers using one token. Keep one active consumer.
 
-## Discord commands are missing
+## Missing or Rejected Commands
 
-Confirm `DISCORD_BOT_TOKEN` is configured and the bot was installed with both `bot` and `applications.commands` scopes. Configure `DISCORD_GUILD_ID` for fast guild synchronization. Sentinel uses native slash commands and does not require the Message Content privileged intent.
+Discord needs its bot token, `bot` and `applications.commands` installation scopes, and successful command synchronization. Optional numeric `DISCORD_GUILD_ID` selects guild synchronization. Message Content intent is not required.
 
-## Commands are rejected
+Use comma-separated numeric platform user IDs in the command allowlists. Missing/malformed values fail closed; usernames and Telegram notification chat IDs do not substitute for user IDs. Rate limiting can also reject commands.
 
-Set numeric IDs in `DISCORD_ALLOWED_USER_IDS` or `TELEGRAM_ALLOWED_USER_IDS`. Missing or malformed allowlists fail closed. Usernames and display names are not authorization identities.
+For historical queries, use one filter at a time; filters do not combine. Discord spells alert history `/alert_history`.
 
-## ARP fails
+## Notifications or Router Polls Fail
 
-Install Scapy and grant the process raw-network privileges. Use ICMP as a fallback where ARP is unavailable or the target is routed.
+Outbound Discord uses `DISCORD_WEBHOOK_URL`; Telegram uses `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. A command bot being connected does not verify outbound notification configuration.
 
-## Notifications fail
+Router polling needs `ZTE_ROUTER_URL`, `ZTE_USERNAME`, `ZTE_PASSWORD`, and optionally `ZTE_RSA_PUBLIC_KEY`. A failed collection does not mark all devices offline. The integrated client disables TLS verification; no runtime environment switch changes that behavior.
 
-Check `DISCORD_WEBHOOK_URL` for outbound Discord delivery and `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` for outbound Telegram delivery. A provider failure is logged and isolated; it should not stop monitoring or the other provider.
-
-## Router polling fails
-
-Check `ZTE_ROUTER_URL`, `ZTE_USERNAME`, `ZTE_PASSWORD`, and optional `ZTE_RSA_PUBLIC_KEY`. A failed collector poll is treated as unknown network state and does not mark all devices offline.
+Inspect logs without publishing credentials or collected network data. See [setup](../development/contributing.md) and [monitoring](../monitoring/monitoring.md).

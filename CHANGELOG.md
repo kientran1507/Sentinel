@@ -1,23 +1,20 @@
-## Current Implementation
-
-- Added ICMP/ARP discovery orchestration and hostname enrichment.
-- Added authenticated ZTE H3601P collection, continuous presence tracking, offline debouncing, and recovery events.
-- Added typed events, an in-process event bus, rule-based alerts, bounded alert history, and Discord/Telegram notification providers.
-- Added shared authorized commands `/help`, `/devices`, `/status`, and `/alerts` for Telegram and native Discord slash commands.
-- Added an integrated runtime so monitoring, alerting, and both command adapters share one `DeviceRegistry` and `AlertHistory`.
-- Added Discord embeds and Telegram HTML command renderers.
-
-The current runtime remains in memory. REST API, database persistence, dashboards, metrics export, and packaged Docker/K3s deployment are future work.
-
 # Changelog
+
+## Unreleased
+
+- Added SQLite device, event, and alert repositories with historical queries and commands.
+- Added asset inventory, address summaries, observation records, vendor enrichment, and PostgreSQL initialization.
+- Added persistent inventory with a live-state overlay to the bot `/devices` command.
+- Added optional hostname enrichment to discovery persistence.
+- Added backend and network-scope configuration, an identity contract, and a storage ADR.
+
+These changes are implemented on the development branch. PostgreSQL verification and several identity, migration, and recovery requirements remain open; see [project status](docs/PROJECT_STATUS.md).
 
 ## v0.1.0
 
-### Added
+- Established the repository, architecture documentation, diagrams, and development scaffolding.
+- Developed ICMP/ARP discovery, hostname enrichment, and authenticated ZTE collection.
+- Added presence tracking, typed events, alert rules, notifications, and authorized Discord/Telegram commands.
+- Added a shared monitor/command runtime and platform-specific rendering.
 
-- Repository structure
-- GitHub project
-- Architecture documentation
-- Draw.io diagrams
-- Docker/Kubernetes scaffolding
-- Development documentation
+See [release notes](docs/releases/v0.1.0.md) for the historical scope.

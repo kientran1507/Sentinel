@@ -1,8 +1,10 @@
-# Contributing
-
-Sentinel is a Python project. Keep changes modular and preserve the shared runtime boundaries: discovery/monitoring own state transitions, `AlertEngine` owns alert rules, notification providers own outbound APIs, and `CommandHandler` owns shared command semantics.
+# Development
 
 ## Setup
+
+Use a current Python environment compatible with the code and dependencies. Although package metadata says Python >=3.8, the source uses modern annotations and has not established support for every version in that range.
+
+From the repository root on Windows:
 
 ```powershell
 python -m venv .venv
@@ -10,18 +12,39 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-Copy `.env.example` to `.env` for local router/provider testing. Never commit `.env`, tokens, passwords, webhook URLs, or user IDs that identify a real deployment.
+On Linux, activate with `source .venv/bin/activate`. The editable install provides `sentinel` and installs cryptography, mac-vendor-lookup, psycopg, Scapy, zeroconf, and discord.py.
 
-## Testing
+For a new local setup, use [.env.example](../../.env.example) as the configuration template; preserve an existing `.env`. Never commit credentials, tokens, real user IDs, or collected network/database data.
 
-```powershell
-python -m unittest discover -s tests -p "test_*.py" -v
-python -m unittest tests.test_commands tests.test_command_renderers -v
-python -m py_compile services/commands/*.py scripts/sentinel.py
+## Configuration and Startup
+
+The integrated CLI loads repository-root `.env` and preserves variables already set in the process. It handles simple key/value lines, matching outer quotes, and literal `\n` escapes; it is not a full shell parser.
+
+| Purpose | Variables |
+| --- | --- |
+| Required integrated ZTE runtime | `ZTE_ROUTER_URL`, `ZTE_USERNAME`, `ZTE_PASSWORD` |
+| Optional router key | `ZTE_RSA_PUBLIC_KEY` |
+| Outbound Discord | `DISCORD_WEBHOOK_URL` |
+| Discord commands | `DISCORD_BOT_TOKEN`, `DISCORD_ALLOWED_USER_IDS`, optional `DISCORD_GUILD_ID` |
+| Outbound Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Telegram commands | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS` |
+
+See [storage settings](../architecture/persistent-storage.md) for backend, database, scope, and test DSN details. An unset backend selects SQLite. The current runtime is configured for PostgreSQL; integration coverage and remaining gaps are recorded in [project status](../PROJECT_STATUS.md).
+
+```text
+python -m scripts.sentinel start
 ```
 
-Tests must not make real Discord, Telegram, or router requests. Use mocks and preserve the existing failure-isolation tests. Update documentation when command output, configuration, runtime wiring, or deployment behavior changes.
+No notification providers are required. Configured outbound providers make real requests. The discovery helper is separate and does not load `.env`; see [discovery](../monitoring/device-discovery.md).
 
-## Pull Requests
+## Checks and Changes
 
-Use focused branches and explain architectural impact, tests, configuration changes, and any limitations. Keep future architecture clearly separate from implemented behavior.
+```text
+python -m unittest discover -s tests -p "test_*.py" -v
+python -m unittest discover -s tests -p "test_commands.py" -v
+python -m unittest discover -s tests -p "test_postgres_storage.py" -v
+```
+
+PostgreSQL integration tests run only when `SENTINEL_TEST_DATABASE_URL` is set. Use a disposable database and a role allowed to create schemas: each test creates a unique `sentinel_test_` schema, sets that connection's search path to it, and drops it during cleanup. Tests never derive a test DSN from runtime configuration. Keep the DSN private and do not point it at production. Schema/migration failure and commit-failure tests deliberately provoke SQL errors. Other service requests should be mocked in tests.
+
+Keep discovery/presence, alert rules, notifications, command semantics, and persistence boundaries separate. Scale verification to the behavior changed, preserve failure-isolation coverage, and document limitations alongside features. Do not use SQLite results as PostgreSQL acceptance evidence.

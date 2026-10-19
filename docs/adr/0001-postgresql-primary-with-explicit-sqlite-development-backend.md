@@ -1,24 +1,25 @@
-# PostgreSQL Primary With Explicit SQLite Development Backend
+# ADR 0001: PostgreSQL Production Target, SQLite Development Backend
 
-## Status
-
-Accepted for Milestone 1.
+Status: accepted direction; PostgreSQL operational verification remains incomplete.
 
 ## Decision
 
-PostgreSQL is Sentinel's production persistence backend. SQLite remains a deliberately selected backend for local development and fast tests. `SENTINEL_STORAGE_BACKEND` selects `postgresql` or `sqlite`; Sentinel never changes backend automatically. PostgreSQL requires `SENTINEL_DATABASE_URL`; SQLite uses `SENTINEL_DATABASE_PATH`.
+Use PostgreSQL as the intended production persistence backend and retain SQLite for local development and tests. Select `postgresql` or `sqlite` through `SENTINEL_STORAGE_BACKEND`. PostgreSQL requires `SENTINEL_DATABASE_URL`; SQLite uses `SENTINEL_DATABASE_PATH`.
 
-Assets receive immutable opaque IDs. A normalized MAC is a correlation key, not a primary key. SQLite inventory import is an explicit future operation; startup never imports, deletes, or overwrites local databases.
+The implementation defaults to SQLite when the backend variable is unset. Explicit production configuration is therefore required. No automatic backend fallback or inventory import occurs.
+
+Use opaque asset IDs, with MACs as correlation keys. Current global MAC uniqueness and other identity limits are documented in [asset identity](../architecture/asset-identity.md).
 
 ## Consequences
 
-Migrations are versioned and run transactionally at initialization. PostgreSQL is authoritative for production integration tests. SQLite remains useful for repository tests but does not substitute for PostgreSQL compatibility testing. A PostgreSQL outage fails storage initialization clearly; after startup, persistence adapters isolate write failures so monitoring can continue.
+PostgreSQL has a connection adapter and versioned initialization migration. SQLite initializes its schema through its own path. Asset observations now use one transaction spanning reconciliation, assets, addresses, and source evidence; temporary SQLite tests cover rollback. Legacy device, event, and alert writes remain independent. PostgreSQL integration validation is still required.
 
-## Alternatives Considered
+Initialization failure stops runtime startup. Later persistence failures are isolated and logged, without guaranteed replay. Seven controlled PostgreSQL integration tests passed on 2026-10-19, covering migrations, rollback, inventory, and historical queries. Independent-connection concurrency, network-outage recovery, and backup/restore still need validation.
 
-- PostgreSQL only: aligns with the target but removes the current zero-service local workflow.
-- SQLite default with optional PostgreSQL: keeps local setup simple but makes production semantics secondary and risks backend drift.
+## Alternatives and Migration
 
-## Migration Strategy
+PostgreSQL-only storage would remove the zero-service development workflow. SQLite-only storage would avoid backend drift but depart from the production target.
 
-Deploy an empty PostgreSQL schema through versioned migrations. Existing SQLite files remain untouched. Any import must be explicit, auditable, and opt-in after identity reconciliation policy and backup handling are implemented.
+Initialize an empty PostgreSQL database explicitly. Existing SQLite files remain in place. Import, reconciliation, backup/restore, and production migration procedures require separate implementation and validation; startup does not perform them.
+
+See [storage configuration and limits](../architecture/persistent-storage.md).
