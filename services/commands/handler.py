@@ -40,7 +40,18 @@ def parse_allowed_ids(value: str | None) -> frozenset[str]:
 class CommandHandler:
     """Platform-neutral, allowlisted Sentinel command implementation."""
 
-    def __init__(self, registry: DeviceRegistry, *, monitor=None, alert_history: Optional[AlertHistory] = None, history_service: Optional[HistoryService] = None, asset_repository=None, allowed_users: Optional[Dict[str, Iterable[str]]] = None, rate_limit: int = 10, rate_window: float = 30.0):
+    def __init__(
+        self,
+        registry: DeviceRegistry,
+        *,
+        monitor=None,
+        alert_history: Optional[AlertHistory] = None,
+        history_service: Optional[HistoryService] = None,
+        asset_repository=None,
+        allowed_users: Optional[Dict[str, Iterable[str]]] = None,
+        rate_limit: int = 10,
+        rate_window: float = 30.0,
+    ):
         self.registry = registry
         self.monitor = monitor
         self.alert_history = alert_history or AlertHistory()
@@ -109,7 +120,6 @@ class CommandHandler:
 
     def _devices(self, command_name: str = "devices", args=None) -> CommandResponse:
         devices = sorted(self.registry.get_all(), key=lambda device: (device.hostname or "unknown", device.mac_address or ""))
-        counts = {"online": 0, "offline": 0, "unknown": 0}
         rows = []
         persisted = None
         if self.asset_repository is not None:
@@ -123,17 +133,21 @@ class CommandHandler:
             for asset in persisted:
                 live = live_by_mac.get((asset.mac_address or "").lower())
                 state = (live.status if live else "unknown").upper()
-                counts[state.lower()] = counts.get(state.lower(), 0) + 1
                 addresses = self.asset_repository.list_addresses(asset.asset_id)
-                active = next((address for address in addresses if getattr(address, "assignment_ended", None) is None), addresses[0] if addresses else None)
-                rows.append({"hostname": (live.hostname if live and live.hostname else asset.hostname), "ip": (live.ip_address if live else active.ip_address if active else None), "mac": (asset.mac_address or "").upper() or None, "vendor": asset.vendor or "Unknown", "state": state})
-            text_lines = ["Sentinel Devices", ""]
-            text_lines.extend(f"{row['hostname'] or 'unknown'} â€” {row['ip'] or 'unknown'} â€” {row['mac']} â€” {row['state']}" for row in rows)
-            text_lines.extend(["", f"Total: {len(rows)}", f"Online: {counts.get('online', 0)}", f"Offline: {counts.get('offline', 0)}", f"Unknown: {counts.get('unknown', 0)}"])
-            return CommandResponse("\n".join(text_lines), command=command_name, data={"devices": rows, "total": len(rows), **counts})
+                active = next(
+                    (address for address in addresses if getattr(address, "assignment_ended", None) is None),
+                    addresses[0] if addresses else None,
+                )
+                rows.append({
+                    "hostname": live.hostname if live and live.hostname else asset.hostname,
+                    "ip": live.ip_address if live else active.ip_address if active else None,
+                    "mac": (asset.mac_address or "").upper() or None,
+                    "vendor": asset.vendor or "Unknown",
+                    "state": state,
+                })
+            return self._device_response(rows, command_name, separator="—")
         for device in devices:
             state = (device.status or "unknown").upper()
-            counts[state.lower()] = counts.get(state.lower(), 0) + 1
             vendor = None
             if self.asset_repository is not None:
                 try:
@@ -144,11 +158,28 @@ class CommandHandler:
                 except Exception:
                     logger.exception("Failed to read asset vendor for device: mac=%s", device.mac_address)
             rows.append({"hostname": device.hostname, "ip": device.ip_address, "mac": (device.mac_address or "").upper() or None, "vendor": vendor or "Unknown", "state": state})
+        return self._device_response(rows, command_name)
+
+    @staticmethod
+    def _device_response(rows: list[dict], command_name: str, *, separator: str = "—") -> CommandResponse:
+        counts = {"online": 0, "offline": 0, "unknown": 0}
+        for row in rows:
+            state = row["state"].lower()
+            counts[state] = counts.get(state, 0) + 1
         text_lines = ["Sentinel Devices", ""]
-        text_lines.extend(f"{row['hostname'] or 'unknown'} — {row['ip'] or 'unknown'} — {row['mac']} — {row['state']}" for row in rows)
-        text_lines.extend(["", f"Total: {len(rows)}", f"Online: {counts.get('online', 0)}", f"Offline: {counts.get('offline', 0)}", f"Unknown: {counts.get('unknown', 0)}"])
-        text = "\n".join(text_lines)
-        return CommandResponse(text, command=command_name, data={"devices": rows, "total": len(rows), **counts})
+        text_lines.extend(
+            f"{row['hostname'] or 'unknown'} {separator} {row['ip'] or 'unknown'} "
+            f"{separator} {row['mac']} {separator} {row['state']}"
+            for row in rows
+        )
+        text_lines.extend([
+            "", f"Total: {len(rows)}", f"Online: {counts.get('online', 0)}",
+            f"Offline: {counts.get('offline', 0)}", f"Unknown: {counts.get('unknown', 0)}",
+        ])
+        return CommandResponse(
+            "\n".join(text_lines), command=command_name,
+            data={"devices": rows, "total": len(rows), **counts},
+        )
 
     def _status(self, command_name: str = "status", args=None) -> CommandResponse:
         devices = self.registry.get_all()
@@ -181,7 +212,12 @@ class CommandHandler:
         if error:
             return error
         try:
-            events = self.history_service.events_by_type(options["type"], options["limit"]) if options["type"] else self.history_service.events_for_device(options["device"], options["limit"]) if options["device"] else self.history_service.recent_events(options["limit"])
+            if options["type"]:
+                events = self.history_service.events_by_type(options["type"], options["limit"])
+            elif options["device"]:
+                events = self.history_service.events_for_device(options["device"], options["limit"])
+            else:
+                events = self.history_service.recent_events(options["limit"])
         except Exception:
             logger.exception("Historical event query failed")
             return CommandResponse("Sentinel could not read historical events.", ok=False, command=command_name)
@@ -246,7 +282,7 @@ class CommandHandler:
                     if index + 1 >= len(args):
                         raise ValueError(f"Usage: /{command_name} [limit] [device]")
                     option = value[2:].replace("-", "_")
-                    if option == "type" and not allow_type or option == "severity" and not allow_severity:
+                    if (option == "type" and not allow_type) or (option == "severity" and not allow_severity):
                         raise ValueError(f"Usage: /{command_name} [limit] [device]")
                     options[option] = args[index + 1]
                     index += 2

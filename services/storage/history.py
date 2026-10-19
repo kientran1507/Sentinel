@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from services.alerting.engine import Alert, AlertType, Severity
@@ -9,6 +9,7 @@ from services.discovery.models import DeviceEvent, DeviceEventType
 from .alerts import AlertRepository
 from .device_events import DeviceEventRepository
 from .devices import device_identity_key
+from .timestamps import ensure_utc
 
 DEFAULT_HISTORY_LIMIT = 50
 MAX_HISTORY_LIMIT = 500
@@ -99,9 +100,7 @@ class HistoryService:
 
     @staticmethod
     def _utc(value: datetime) -> datetime:
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+        return ensure_utc(value)
 
     @classmethod
     def _range(

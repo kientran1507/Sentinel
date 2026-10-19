@@ -9,6 +9,7 @@ from typing import Any, Mapping, Optional
 from services.discovery.models import DiscoveredDevice, ZTEDevice
 
 from .base import Storage
+from .timestamps import ensure_utc
 
 
 @dataclass(frozen=True)
@@ -218,9 +219,7 @@ class DeviceRepository:
 
     @staticmethod
     def _ensure_utc(value: datetime) -> datetime:
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+        return ensure_utc(value)
 
     @classmethod
     def _format_timestamp(cls, value: datetime) -> str:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Optional
 
 from services.alerting.engine import Alert, AlertType, Severity
@@ -9,6 +9,7 @@ from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
 
 from .base import Storage
 from .devices import device_identity_key, normalize_mac
+from .timestamps import format_timestamp, parse_timestamp
 
 
 class AlertRepository:
@@ -74,8 +75,9 @@ class AlertRepository:
         parameters: list[Any] = []
         if device_identity:
             if device_identity.startswith("ip:"):
+                ip_expression = self.storage.json_text_expression("event_snapshot", "ip_address")
                 clauses.append(
-                    "(device_identity = ? OR json_extract(event_snapshot, '$.ip_address') = ?)"
+                    f"(device_identity = ? OR {ip_expression} = ?)"
                 )
                 parameters.extend((device_identity, device_identity[3:]))
             else:
@@ -113,7 +115,8 @@ class AlertRepository:
             query = "SELECT * FROM alerts WHERE device_identity = ? ORDER BY timestamp ASC, alert_id ASC"
             parameters = (identity,)
         elif ip_address:
-            query = "SELECT * FROM alerts WHERE json_extract(event_snapshot, '$.ip_address') = ? ORDER BY timestamp ASC, alert_id ASC"
+            ip_expression = self.storage.json_text_expression("event_snapshot", "ip_address")
+            query = f"SELECT * FROM alerts WHERE {ip_expression} = ? ORDER BY timestamp ASC, alert_id ASC"
             parameters = (ip_address,)
         else:
             raise ValueError("mac_address or ip_address is required")
@@ -159,18 +162,11 @@ class AlertRepository:
 
     @staticmethod
     def _format_timestamp(value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat()
+        return format_timestamp(value)
 
     @staticmethod
     def _parse_timestamp(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+        return parse_timestamp(value)
 
     @classmethod
     def _event_from_dict(cls, data: dict[str, Any]) -> DeviceEvent:

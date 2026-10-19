@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Optional
 
 from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
 
 from .base import Storage
 from .devices import device_identity_key, normalize_mac
+from .timestamps import format_timestamp, parse_timestamp
 
 
 class DeviceEventRepository:
@@ -156,18 +157,11 @@ class DeviceEventRepository:
 
     @staticmethod
     def _format_timestamp(value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat()
+        return format_timestamp(value)
 
     @staticmethod
     def _parse_timestamp(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+        return parse_timestamp(value)
 
     @classmethod
     def _from_row(cls, row) -> DeviceEvent:

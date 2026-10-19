@@ -23,6 +23,9 @@ class _PostgresConnection:
 
 
 class PostgreSQLStorage(Storage):
+    def json_text_expression(self, column: str, field: str) -> str:
+        return f"(CAST({column} AS jsonb) ->> '{field}')"
+
     def __init__(self, database_url=None):
         self.database_url = database_url if database_url is not None else get_database_url()
         self._connection = None
@@ -43,6 +46,7 @@ class PostgreSQLStorage(Storage):
         with self._lock:
             if self._connection is not None:
                 return
+            connection = None
             try:
                 connection = psycopg.connect(self.database_url, row_factory=dict_row)
                 adapter = _PostgresConnection(connection)
@@ -50,7 +54,7 @@ class PostgreSQLStorage(Storage):
                 connection.commit()
                 self._connection = connection
             except Exception as exc:
-                if 'connection' in locals():
+                if connection is not None:
                     connection.close()
                 raise StorageInitializationError("could not initialize PostgreSQL storage") from exc
 
@@ -62,11 +66,10 @@ class PostgreSQLStorage(Storage):
             adapter = _PostgresConnection(self._connection)
             try:
                 yield adapter
+                self._connection.commit()
             except Exception:
                 self._connection.rollback()
                 raise
-            else:
-                self._connection.commit()
 
     def close(self):
         with self._lock:

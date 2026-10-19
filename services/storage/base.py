@@ -20,6 +20,10 @@ class StorageNotInitializedError(StorageError):
 class Storage(ABC):
     """Small application-facing boundary for persistent storage."""
 
+    def json_text_expression(self, column: str, field: str) -> str:
+        """Build a JSON text lookup for trusted, internal SQL identifiers."""
+        raise NotImplementedError
+
     @abstractmethod
     def initialize(self) -> None:
         """Open resources and prepare storage for use."""

@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Small CLI wrapper to run the ICMP discovery scanner.
-
-Usage examples:
-  python scripts/discover.py 192.168.2.0/30 --concurrency 10 --timeout 1
-  python scripts/discover.py 192.168.2.0/24 --csv results.csv
-    python scripts/discover.py 192.168.2.0/24 --orchestrator --resolve-hostnames
-
-This script intentionally reuses the `ICMPScanner` and `DiscoveredDevice` model
-so results remain consistent with the rest of the codebase.
-"""
+"""ICMP/ARP discovery CLI with optional orchestration, enrichment, and storage."""
 import argparse
 import json
 import csv
@@ -37,22 +28,13 @@ except ModuleNotFoundError:
 
 
 def to_dict(dev: DiscoveredDevice) -> dict:
-    if not isinstance(dev, DiscoveredDevice):
-        # Fallback for duck-typed objects
-        return {
-            "ip_address": getattr(dev, "ip_address", None),
-            "mac_address": getattr(dev, "mac_address", None),
-            "hostname": getattr(dev, "hostname", None),
-            "discovery_source": getattr(dev, "discovery_source", None),
-            "discovered_at": getattr(dev, "discovered_at", None).isoformat() if getattr(dev, "discovered_at", None) else None,
-        }
-
+    discovered_at = getattr(dev, "discovered_at", None)
     return {
-        "ip_address": dev.ip_address,
-        "mac_address": dev.mac_address,
-        "hostname": dev.hostname,
-        "discovery_source": dev.discovery_source,
-        "discovered_at": dev.discovered_at.isoformat(),
+        "ip_address": getattr(dev, "ip_address", None),
+        "mac_address": getattr(dev, "mac_address", None),
+        "hostname": getattr(dev, "hostname", None),
+        "discovery_source": getattr(dev, "discovery_source", None),
+        "discovered_at": discovered_at.isoformat() if discovered_at else None,
     }
 
 

@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 import hashlib
 from uuid import uuid4
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
 
 from services.discovery.models import DiscoveredDevice, ZTEDevice
 
 from .base import Storage
-from .devices import device_identity_key, normalize_mac
+from .devices import normalize_mac
+from .timestamps import ensure_utc, format_timestamp, parse_timestamp
 from .vendor_lookup import MacVendorResolver, VendorLookup
 
 
@@ -73,32 +74,35 @@ class ObservationRepository:
 
     def record(self, observation: AssetObservation) -> AssetObservation:
         with self.storage.transaction() as connection:
-            connection.execute(
-                """INSERT INTO asset_observations (
-                    observation_id, idempotency_key, asset_id, network_scope, source,
-                    observed_at, ingested_at, raw_mac_address, normalized_mac_address,
-                    ip_address, hostname, interface, parent_mac_address, connection_type,
-                    rssi, wireless, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(idempotency_key) DO NOTHING""",
-                (observation.observation_id, observation.idempotency_key, observation.asset_id,
-                 observation.network_scope, observation.source, AssetRepository._format_timestamp(observation.observed_at),
-                 AssetRepository._format_timestamp(observation.ingested_at), observation.raw_mac_address,
-                 observation.normalized_mac_address, observation.ip_address, observation.hostname,
-                 observation.interface, observation.parent_mac_address, observation.connection_type,
-                 observation.rssi, int(observation.wireless) if observation.wireless is not None else None,
-                 json.dumps(observation.metadata, sort_keys=True)),
-            )
-            row = connection.execute("SELECT * FROM asset_observations WHERE idempotency_key = ?", (observation.idempotency_key,)).fetchone()
-            return self._from_row(row)
+            return self._record(connection, observation)
+
+    def _record(self, connection, observation: AssetObservation) -> AssetObservation:
+        connection.execute(
+            """INSERT INTO asset_observations (
+                observation_id, idempotency_key, asset_id, network_scope, source,
+                observed_at, ingested_at, raw_mac_address, normalized_mac_address,
+                ip_address, hostname, interface, parent_mac_address, connection_type,
+                rssi, wireless, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(idempotency_key) DO NOTHING""",
+            (observation.observation_id, observation.idempotency_key, observation.asset_id,
+             observation.network_scope, observation.source, format_timestamp(observation.observed_at),
+             format_timestamp(observation.ingested_at), observation.raw_mac_address,
+             observation.normalized_mac_address, observation.ip_address, observation.hostname,
+             observation.interface, observation.parent_mac_address, observation.connection_type,
+             observation.rssi, int(observation.wireless) if observation.wireless is not None else None,
+             json.dumps(observation.metadata, sort_keys=True)),
+        )
+        row = connection.execute("SELECT * FROM asset_observations WHERE idempotency_key = ?", (observation.idempotency_key,)).fetchone()
+        return self._from_row(row)
 
     @staticmethod
     def _from_row(row) -> AssetObservation:
         return AssetObservation(
             observation_id=row["observation_id"], idempotency_key=row["idempotency_key"],
             asset_id=row["asset_id"], network_scope=row["network_scope"], source=row["source"],
-            observed_at=AssetRepository._parse_timestamp(row["observed_at"]),
-            ingested_at=AssetRepository._parse_timestamp(row["ingested_at"]),
+            observed_at=parse_timestamp(row["observed_at"]),
+            ingested_at=parse_timestamp(row["ingested_at"]),
             raw_mac_address=row["raw_mac_address"], normalized_mac_address=row["normalized_mac_address"],
             ip_address=row["ip_address"], hostname=row["hostname"], interface=row["interface"],
             parent_mac_address=row["parent_mac_address"], connection_type=row["connection_type"],
@@ -134,42 +138,45 @@ class AssetRepository:
 
     def upsert(self, asset: Asset) -> Asset:
         with self.storage.transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO assets (
-                    asset_id, mac_address, hostname, vendor, device_type,
-                    trust_level, status, first_seen, last_seen, metadata, network_scope, is_provisional
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(asset_id) DO UPDATE SET
-                    mac_address = excluded.mac_address,
-                    hostname = excluded.hostname,
-                    vendor = COALESCE(NULLIF(excluded.vendor, ''), assets.vendor),
-                    device_type = excluded.device_type,
-                    trust_level = excluded.trust_level,
-                    status = excluded.status,
-                    first_seen = excluded.first_seen,
-                    last_seen = excluded.last_seen,
-                    metadata = excluded.metadata,
-                    network_scope = excluded.network_scope,
-                    is_provisional = excluded.is_provisional
-                """,
-                (
-                    asset.asset_id,
-                    asset.mac_address,
-                    asset.hostname,
-                    asset.vendor,
-                    asset.device_type,
-                    asset.trust_level,
-                    asset.status,
-                    self._format_timestamp(asset.first_seen),
-                    self._format_timestamp(asset.last_seen),
-                    json.dumps(asset.metadata, sort_keys=True),
-                    asset.network_scope,
-                    int(asset.is_provisional),
-                ),
-            )
-            row = connection.execute("SELECT * FROM assets WHERE asset_id = ?", (asset.asset_id,)).fetchone()
-            return self._asset_from_row(row)
+            return self._upsert(connection, asset)
+
+    def _upsert(self, connection, asset: Asset) -> Asset:
+        connection.execute(
+            """
+            INSERT INTO assets (
+                asset_id, mac_address, hostname, vendor, device_type,
+                trust_level, status, first_seen, last_seen, metadata, network_scope, is_provisional
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+                mac_address = excluded.mac_address,
+                hostname = excluded.hostname,
+                vendor = COALESCE(NULLIF(excluded.vendor, ''), assets.vendor),
+                device_type = excluded.device_type,
+                trust_level = excluded.trust_level,
+                status = excluded.status,
+                first_seen = excluded.first_seen,
+                last_seen = excluded.last_seen,
+                metadata = excluded.metadata,
+                network_scope = excluded.network_scope,
+                is_provisional = excluded.is_provisional
+            """,
+            (
+                asset.asset_id,
+                asset.mac_address,
+                asset.hostname,
+                asset.vendor,
+                asset.device_type,
+                asset.trust_level,
+                asset.status,
+                self._format_timestamp(asset.first_seen),
+                self._format_timestamp(asset.last_seen),
+                json.dumps(asset.metadata, sort_keys=True),
+                asset.network_scope,
+                int(asset.is_provisional),
+            ),
+        )
+        row = connection.execute("SELECT * FROM assets WHERE asset_id = ?", (asset.asset_id,)).fetchone()
+        return self._asset_from_row(row)
 
     def record_observation(
         self,
@@ -213,54 +220,53 @@ class AssetRepository:
             vendor = vendor.strip() or None
         else:
             vendor = None
-        asset = self._find_matching_asset(mac, ip)
-        if asset is None:
-            asset_id = str(uuid4())
-            asset = Asset(
-                asset_id=asset_id,
-                mac_address=mac,
-                hostname=hostname,
-                vendor=vendor,
-                first_seen=first_seen,
-                last_seen=last_seen,
-                status=status,
-                metadata=device_metadata,
-                network_scope=self.network_scope,
-                is_provisional=not bool(mac),
-            )
-        else:
-            merged_metadata = dict(asset.metadata)
-            merged_metadata.update(device_metadata)
-            asset = Asset(
-                asset_id=asset.asset_id,
-                mac_address=mac or asset.mac_address,
-                hostname=hostname or asset.hostname,
-                vendor=vendor or asset.vendor,
-                device_type=asset.device_type,
-                trust_level=asset.trust_level,
-                status=status or asset.status,
-                first_seen=min(asset.first_seen, first_seen),
-                last_seen=max(asset.last_seen, last_seen),
-                metadata=merged_metadata,
-                network_scope=asset.network_scope,
-                is_provisional=asset.is_provisional and not bool(mac),
-            )
+        # One connection owns reconciliation and every related inventory write.
+        with self.storage.transaction() as connection:
+            asset = self._find_matching_asset(connection, mac, ip)
+            if asset is None:
+                asset_id = str(uuid4())
+                asset = Asset(
+                    asset_id=asset_id,
+                    mac_address=mac,
+                    hostname=hostname,
+                    vendor=vendor,
+                    first_seen=first_seen,
+                    last_seen=last_seen,
+                    status=status,
+                    metadata=device_metadata,
+                    network_scope=self.network_scope,
+                    is_provisional=not bool(mac),
+                )
+            else:
+                merged_metadata = dict(asset.metadata)
+                merged_metadata.update(device_metadata)
+                asset = replace(
+                    asset,
+                    mac_address=mac or asset.mac_address,
+                    hostname=hostname or asset.hostname,
+                    vendor=vendor or asset.vendor,
+                    status=status or asset.status,
+                    first_seen=min(asset.first_seen, first_seen),
+                    last_seen=max(asset.last_seen, last_seen),
+                    metadata=merged_metadata,
+                    is_provisional=asset.is_provisional and not bool(mac),
+                )
 
-        asset = self.upsert(asset)
-        if ip:
-            self._record_address(asset.asset_id, ip, source=source, observed_at=last_seen)
-        raw_mac = getattr(device, "mac_address", None)
-        key_material = "|".join(str(value) for value in (source, first_seen.isoformat(), raw_mac, ip, hostname, device_metadata))
-        self.observations.record(AssetObservation(
-            observation_id=str(uuid4()), idempotency_key=hashlib.sha256(key_material.encode("utf-8")).hexdigest(),
-            asset_id=asset.asset_id, network_scope=self.network_scope, source=source,
-            observed_at=last_seen, ingested_at=observed_now, raw_mac_address=raw_mac,
-            normalized_mac_address=mac, ip_address=ip, hostname=hostname,
-            interface=device_metadata.get("interface"), parent_mac_address=normalize_mac(device_metadata.get("parent_mac")),
-            connection_type=device_metadata.get("connection_type"), rssi=device_metadata.get("rssi"),
-            wireless=device_metadata.get("wireless"), metadata=device_metadata,
-        ))
-        return asset
+            asset = self._upsert(connection, asset)
+            if ip:
+                self._record_address(connection, asset.asset_id, ip, source=source, observed_at=last_seen)
+            raw_mac = getattr(device, "mac_address", None)
+            key_material = "|".join(str(value) for value in (source, first_seen.isoformat(), raw_mac, ip, hostname, device_metadata))
+            self.observations._record(connection, AssetObservation(
+                observation_id=str(uuid4()), idempotency_key=hashlib.sha256(key_material.encode("utf-8")).hexdigest(),
+                asset_id=asset.asset_id, network_scope=self.network_scope, source=source,
+                observed_at=last_seen, ingested_at=observed_now, raw_mac_address=raw_mac,
+                normalized_mac_address=mac, ip_address=ip, hostname=hostname,
+                interface=device_metadata.get("interface"), parent_mac_address=normalize_mac(device_metadata.get("parent_mac")),
+                connection_type=device_metadata.get("connection_type"), rssi=device_metadata.get("rssi"),
+                wireless=device_metadata.get("wireless"), metadata=device_metadata,
+            ))
+            return asset
 
     def get_by_id(self, asset_id: str) -> Optional[Asset]:
         with self.storage.transaction() as connection:
@@ -272,18 +278,24 @@ class AssetRepository:
         if not normalized:
             return None
         with self.storage.transaction() as connection:
-            row = connection.execute("SELECT * FROM assets WHERE mac_address = ?", (normalized,)).fetchone()
-            return self._asset_from_row(row) if row else None
+            return self._get_by_mac(connection, normalized)
+
+    def _get_by_mac(self, connection, normalized: str) -> Optional[Asset]:
+        row = connection.execute("SELECT * FROM assets WHERE mac_address = ?", (normalized,)).fetchone()
+        return self._asset_from_row(row) if row else None
 
     def get_by_ip(self, ip_address: Optional[str]) -> Optional[Asset]:
         if not ip_address:
             return None
         with self.storage.transaction() as connection:
-            row = connection.execute(
-                "SELECT a.* FROM assets a JOIN asset_addresses aa ON aa.asset_id = a.asset_id WHERE aa.ip_address = ? AND aa.network_scope = ? AND aa.assignment_ended IS NULL ORDER BY a.last_seen DESC LIMIT 1",
-                (ip_address, self.network_scope),
-            ).fetchone()
-            return self._asset_from_row(row) if row else None
+            return self._get_by_ip(connection, ip_address)
+
+    def _get_by_ip(self, connection, ip_address: str) -> Optional[Asset]:
+        row = connection.execute(
+            "SELECT a.* FROM assets a JOIN asset_addresses aa ON aa.asset_id = a.asset_id WHERE aa.ip_address = ? AND aa.network_scope = ? AND aa.assignment_ended IS NULL ORDER BY a.last_seen DESC LIMIT 1",
+            (ip_address, self.network_scope),
+        ).fetchone()
+        return self._asset_from_row(row) if row else None
 
     def find(
         self,
@@ -316,86 +328,66 @@ class AssetRepository:
             return [self._asset_from_row(row) for row in rows]
 
     def list_addresses(self, asset_id: str) -> list[AssetAddress]:
-        with self.storage.transaction() as connection:
-            rows = connection.execute(
-                "SELECT * FROM asset_addresses WHERE asset_id = ? ORDER BY last_seen DESC, ip_address ASC",
-                (asset_id,),
-            ).fetchall()
-            return [self._address_from_row(row) for row in rows]
+        return self.addresses.list_for_asset(asset_id)
 
-    def _find_matching_asset(self, mac_address: Optional[str], ip_address: Optional[str]) -> Optional[Asset]:
+    def _find_matching_asset(self, connection, mac_address: Optional[str], ip_address: Optional[str]) -> Optional[Asset]:
         if mac_address:
-            asset = self.get_by_mac(mac_address)
+            asset = self._get_by_mac(connection, mac_address)
             if asset:
                 return asset
         if ip_address:
-            asset = self.get_by_ip(ip_address)
+            asset = self._get_by_ip(connection, ip_address)
             if asset and (not mac_address or asset.is_provisional):
                 return asset
         return None
 
-    def _record_address(self, asset_id: str, ip_address: str, *, source: str, observed_at: datetime) -> AssetAddress:
-        with self.storage.transaction() as connection:
+    def _record_address(self, connection, asset_id: str, ip_address: str, *, source: str, observed_at: datetime) -> AssetAddress:
+        connection.execute(
+            "UPDATE asset_addresses SET assignment_ended = ? WHERE network_scope = ? AND ip_address = ? AND asset_id != ? AND assignment_ended IS NULL",
+            (self._format_timestamp(observed_at), self.network_scope, ip_address, asset_id),
+        )
+        existing = connection.execute(
+            "SELECT * FROM asset_addresses WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
+            (asset_id, self.network_scope, ip_address),
+        ).fetchone()
+        observed_at_value = self._format_timestamp(observed_at)
+        if existing is None:
             connection.execute(
-                "UPDATE asset_addresses SET assignment_ended = ? WHERE network_scope = ? AND ip_address = ? AND asset_id != ? AND assignment_ended IS NULL",
-                (self._format_timestamp(observed_at), self.network_scope, ip_address, asset_id),
+                """
+                INSERT INTO asset_addresses (asset_id, network_scope, ip_address, source, first_seen, last_seen, assignment_started, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (asset_id, self.network_scope, ip_address, source, observed_at_value, observed_at_value, observed_at_value, json.dumps({}, sort_keys=True)),
             )
-            existing = connection.execute(
-                "SELECT * FROM asset_addresses WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
-                (asset_id, self.network_scope, ip_address),
-            ).fetchone()
-            observed_at_value = self._format_timestamp(observed_at)
-            if existing is None:
-                connection.execute(
-                    """
-                    INSERT INTO asset_addresses (asset_id, network_scope, ip_address, source, first_seen, last_seen, assignment_started, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (asset_id, self.network_scope, ip_address, source, observed_at_value, observed_at_value, observed_at_value, json.dumps({}, sort_keys=True)),
-                )
-                row = connection.execute(
-                    "SELECT * FROM asset_addresses WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
-                    (asset_id, self.network_scope, ip_address),
-                ).fetchone()
-                return self._address_from_row(row)
             row = connection.execute(
                 "SELECT * FROM asset_addresses WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
                 (asset_id, self.network_scope, ip_address),
             ).fetchone()
-            first_seen = self._parse_timestamp(row["first_seen"])
-            last_seen = max(self._parse_timestamp(row["last_seen"]), self._ensure_utc(observed_at))
-            connection.execute(
-                "UPDATE asset_addresses SET last_seen = ?, source = ?, assignment_ended = NULL WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
-                (self._format_timestamp(last_seen), source, asset_id, self.network_scope, ip_address),
-            )
-            updated = connection.execute(
-                "SELECT * FROM asset_addresses WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
-                (asset_id, self.network_scope, ip_address),
-            ).fetchone()
-            return self._address_from_row(updated)
+            return self._address_from_row(row)
+        last_seen = max(self._parse_timestamp(existing["last_seen"]), self._ensure_utc(observed_at))
+        connection.execute(
+            "UPDATE asset_addresses SET last_seen = ?, source = ?, assignment_ended = NULL WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
+            (self._format_timestamp(last_seen), source, asset_id, self.network_scope, ip_address),
+        )
+        updated = connection.execute(
+            "SELECT * FROM asset_addresses WHERE asset_id = ? AND network_scope = ? AND ip_address = ?",
+            (asset_id, self.network_scope, ip_address),
+        ).fetchone()
+        return self._address_from_row(updated)
 
     @staticmethod
     def _ensure_utc(value: Optional[datetime]) -> datetime:
         if value is None:
             return datetime.now(timezone.utc)
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+        return ensure_utc(value)
 
     @staticmethod
     def _format_timestamp(value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat()
+        return format_timestamp(value)
 
     @staticmethod
     def _parse_timestamp(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+        return parse_timestamp(value)
 
     @classmethod
     def _asset_from_row(cls, row) -> Asset:

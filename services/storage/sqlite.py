@@ -20,6 +20,9 @@ class SQLiteStorage(Storage):
     Operations are serialized by the instance lock.
     """
 
+    def json_text_expression(self, column: str, field: str) -> str:
+        return f"json_extract({column}, '$.{field}')"
+
     def __init__(self, database_path: Optional[PathLike] = None):
         self.database_path = get_database_path() if database_path is None else Path(database_path)
         self._connection: sqlite3.Connection | None = None
@@ -215,11 +218,10 @@ class SQLiteStorage(Storage):
             connection = self._require_connection()
             try:
                 yield connection
+                connection.commit()
             except Exception:
                 connection.rollback()
                 raise
-            else:
-                connection.commit()
 
     def close(self) -> None:
         with self._lock:
