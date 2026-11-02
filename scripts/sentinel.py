@@ -218,7 +218,9 @@ def create_runtime() -> SentinelRuntime:
     storage = PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
     storage.initialize()
     try:
-        persistence = RuntimePersistence(storage, get_network_scope())
+        persistence = RuntimePersistence(
+            storage, get_network_scope(), event_source="presence_tracker", collector="zte",
+        )
         registry = DeviceRegistry()
         presence_tracker = PresenceTracker(registry)
         event_bus = EventBus()

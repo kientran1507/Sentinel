@@ -22,6 +22,8 @@ Both `--resolve-hostnames` and `--persist` only take effect with `--orchestrator
 
 The persistence sink receives raw ARP/ICMP results independently and final merged results after optional resolution. Merged timestamps use the newest contributing observation so enrichment is not treated as stale. Resolver method/attempts travel in discovery metadata into observation history. It does not emit a separate pre-resolution merged snapshot. Canonical scoped replay keys suppress exact repeats. Storage initialization errors stop the helper; later sink failures are isolated without skipping the other raw source.
 
+With `--orchestrator --persist`, the same sink also writes canonical `network.discovery_observation` events and separate `network.hostname_observation` records when resolver evidence is available, including unsuccessful attempts. A sighting is not treated as proof of a newly discovered asset and generates no additional alert. Deterministic IDs suppress exact observation replays; later times or changed evidence remain distinct. These writes do not change CLI output and fail independently of inventory persistence. See [discovery event rules](../architecture/security-events.md#discovery-evidence).
+
 Hostname diagnostics: `python scripts/test_hostname_resolution.py <ip>` or `--network <cidr>`.
 
 ## Vendor Enrichment

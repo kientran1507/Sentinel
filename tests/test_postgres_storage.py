@@ -16,12 +16,15 @@ from services.storage import AssetRepository, HistoryService, PersistingCollecto
 from services.storage.base import StorageInitializationError
 from services.storage.migrations import MIGRATIONS, Migration
 from tests.test_inventory_acceptance import InventoryAcceptanceContract
+from tests.test_security_event_repository import SecurityEventRepositoryContract
+from tests.test_security_event_ingestion import SecurityEventIngestionContract
+from tests.test_discovery_events import DiscoveryEventIngestionContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, unittest.TestCase):
+class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, unittest.TestCase):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")
@@ -398,3 +401,34 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, unittest.TestCase):
             self.assertEqual(collector.collect(), [device])
         self.assertEqual(collector.collect(), [device])
         self.assertEqual(len(persistence.assets.list()), 1)
+
+    def test_version_two_upgrade_preserves_legacy_inventory_and_history(self):
+        from services.storage import DeviceEventRepository
+        first = self.repository.record_observation(self.device())
+        legacy = DeviceEvent(DeviceEventType.DEVICE_OFFLINE, first.mac_address)
+        DeviceEventRepository(self.storage).save(legacy)
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE security_events")
+            connection.execute("UPDATE storage_metadata SET schema_version = 2")
+        for _ in range(2):
+            self.storage.close()
+            self.storage.initialize()
+        self.assertEqual(self.repository.get_by_mac(first.mac_address).asset_id, first.asset_id)
+        self.assertIsNotNone(DeviceEventRepository(self.storage).get(legacy.event_id))
+        self.assertEqual(self.security_events.query(), [])
+        self.security_events.save(self.security_event())
+
+    def test_failed_canonical_migration_preserves_version_two(self):
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE security_events")
+            connection.execute("UPDATE storage_metadata SET schema_version = 2")
+        self.storage.close()
+        broken = Migration(3, "failed canonical migration", MIGRATIONS[2].statements + ("INVALID SQL",))
+        with patch("services.storage.migrations.MIGRATIONS", MIGRATIONS[:2] + (broken,)):
+            with self.assertRaises(StorageInitializationError):
+                self.storage.initialize()
+        version = self.admin.execute(f"SELECT schema_version FROM {self.schema}.storage_metadata").fetchone()[0]
+        self.assertEqual(version, 2)
+        self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".security_events",)).fetchone()[0])
+        self.storage.initialize()
+        self.security_events.save(self.security_event())

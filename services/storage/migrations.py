@@ -33,6 +33,21 @@ ADDRESS_HISTORY_STATEMENTS = (
 )
 
 
+SECURITY_EVENT_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS security_events (
+        event_id TEXT NOT NULL PRIMARY KEY, schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+        timestamp TEXT NOT NULL, event_type TEXT NOT NULL, severity TEXT NOT NULL,
+        source TEXT NOT NULL, collector TEXT, asset_id TEXT, network_scope TEXT NOT NULL,
+        payload TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_time ON security_events (timestamp, event_id)",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_scope_time ON security_events (network_scope, timestamp, event_id)",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_asset_time ON security_events (asset_id, timestamp, event_id)",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_type_time ON security_events (event_type, timestamp, event_id)",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_source_time ON security_events (source, timestamp, event_id)",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -95,6 +110,7 @@ MIGRATIONS = (
         ),
     ),
     Migration(2, "preserve address assignment intervals", ADDRESS_HISTORY_STATEMENTS),
+    Migration(3, "canonical security events", SECURITY_EVENT_STATEMENTS),
 )
 
 

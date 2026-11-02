@@ -45,10 +45,16 @@ Accepted limits: global MAC correlation cannot distinguish spoofed/reused identi
 
 Convert observations and transitions into a persistent, normalized `SecurityEvent` contract.
 
-- Define event ID, schema version, UTC timestamp, type, severity, source/collector, asset association, network endpoints, message, and raw metadata.
-- Normalize discovery, presence, DHCP, hostname, and mesh observations.
-- Add event validation, repository queries, deduplication, retention, structured JSON logs, and collector-health metrics.
-- Initially keep ingestion in process; evaluate lightweight transport such as Redis only when process separation is needed.
+Status: in progress from 2026-11-02. The [canonical contract, repository, ZTE transitions, and opt-in discovery/hostname evidence](docs/architecture/security-events.md) are implemented. Existing alerts, commands, and discovery output are preserved; DHCP/mesh adapters and operational visibility remain open.
+
+- [x] Define and validate version-1 ID, UTC event time, type, severity, source/collector, optional asset association, subject/traffic endpoints, message, and JSON metadata.
+- [x] Add immutable evidence, strict JSON round-tripping, and an explicit legacy presence/field-change adapter without changing `DeviceEvent`, the event bus, alerts, or existing history.
+- [x] Normalize opt-in raw/merged discovery and actual hostname-resolution evidence, including unsuccessful attempts, with deterministic observation replay IDs and no extra alerts.
+- [ ] Normalize DHCP and mesh observations from actual router evidence without guessing lease or parent relationships.
+- [x] Add separately migrated canonical event persistence, bounded intersecting/cursor queries, exact replay suppression, and explicit duplicate-ID/content conflicts on both backends.
+- [x] Connect best-effort ZTE transition ingestion with conservative asset association, independent failure boundaries, and stable replay links while preserving legacy history, alerts, and commands.
+- [ ] Add retention, structured JSON logs/redaction, and collector-health metrics.
+- [ ] Initially keep ingestion in process; evaluate lightweight transport such as Redis only when process separation is needed.
 
 Candidate types include `asset.discovered`, `asset.updated`, `asset.online`, `asset.offline`, `asset.recovered`, `network.dhcp_observation`, `network.hostname_observation`, `network.mesh_observation`, and collector lifecycle/error events.
 

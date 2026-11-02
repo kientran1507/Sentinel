@@ -12,12 +12,12 @@ The [acceptance matrix](milestone-1-acceptance.md) verifies inventory identity, 
 
 ## Next Milestone
 
-Milestone 2 is next: design the canonical `SecurityEvent` contract and its compatibility boundary with existing device events before changing ingestion. No Milestone 2 implementation is included in the Milestone 1 checkpoint.
+Milestone 2 is in progress: the [contract, repository, ZTE transitions, and opt-in discovery/hostname evidence](../architecture/security-events.md) are implemented on both backends. Existing callbacks record canonical history with conservative asset association, independent failure handling, and stable replay links; alerts, commands, and CLI output are preserved. Next are actual DHCP/mesh evidence adapters, collector lifecycle/health reporting, retention, and structured logging/redaction.
 
 Before production reliance, separately validate backup/restore, upgrades with stopped writers, platform delivery, timeout behavior during real network partitions, retention, and deployment hardening. Durable retry queues and cross-backend import require explicit scope; neither is implicit fallback behavior.
 
 ## Later Capabilities
 
-Canonical security-event ingestion/schema evolution, deterministic detection/correlation, REST API/dashboard, metrics export, additional collectors, and Docker/K3s packaging are future work.
+Broader event-source ingestion/schema evolution, deterministic detection/correlation, REST API/dashboard, metrics export, additional collectors, and Docker/K3s packaging are future work.
 
 Gateway routing, passive IDS telemetry, and any inline enforcement need their own design and validation. Logical collector/event/detection/API/notifier/web boundaries are possible future ownership boundaries, not currently deployed services. The broader project direction is in the [project plan](../../Sentinel_Project_Plan.md).

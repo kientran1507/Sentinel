@@ -10,6 +10,7 @@ from .history import DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, HistoryService
 from .runtime import PersistingCollector, PersistingDiscoverySink, PersistingNotificationManager, RuntimePersistence
 from .sqlite import SQLiteStorage
 from .postgres import PostgreSQLStorage
+from .security_events import SecurityEventConflictError, SecurityEventCursor, SecurityEventRepository
 
 __all__ = [
     "DEFAULT_DATABASE_PATH",
@@ -31,6 +32,9 @@ __all__ = [
     "RuntimePersistence",
     "SQLiteStorage",
     "PostgreSQLStorage",
+    "SecurityEventConflictError",
+    "SecurityEventCursor",
+    "SecurityEventRepository",
     "Storage",
     "StorageError",
     "StorageInitializationError",

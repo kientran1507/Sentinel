@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Iterable
 
 from services.alerting.engine import Alert
 from services.alerting.notifications import NotificationManager
 from services.discovery.models import DeviceEvent, DiscoveredDevice, ZTEDevice
+from services.events import SecurityEvent, normalize_device_event, normalize_discovery_observation
 
 from .alerts import AlertRepository
 from .assets import AssetRepository
 from .device_events import DeviceEventRepository
-from .devices import DeviceRepository
+from .devices import DeviceRepository, normalize_mac
+from .security_events import SecurityEventRepository
 from .base import Storage
 from .config import get_network_scope
 
@@ -20,12 +23,18 @@ logger = logging.getLogger(__name__)
 class RuntimePersistence:
     """Runtime adapter that isolates persistence from monitoring and alerts."""
 
-    def __init__(self, storage: Storage, network_scope: str | None = None):
+    def __init__(
+        self, storage: Storage, network_scope: str | None = None, *,
+        event_source: str = "presence_tracker", collector: str = "zte",
+    ):
         self.storage = storage
         self.devices = DeviceRepository(storage)
         self.assets = AssetRepository(storage, network_scope=network_scope or get_network_scope())
         self.events = DeviceEventRepository(storage)
         self.alerts = AlertRepository(storage)
+        self.security_events = SecurityEventRepository(storage)
+        self.event_source = event_source
+        self.collector = collector
 
     def persist_devices(self, devices: Iterable[ZTEDevice | DiscoveredDevice]) -> None:
         for device in devices:
@@ -40,6 +49,55 @@ class RuntimePersistence:
             self.events.save(event)
         except Exception:
             logger.exception("Failed to persist device event: id=%s", event.event_id)
+        self._persist_security_event(event)
+
+    def _persist_security_event(self, event: DeviceEvent) -> None:
+        try:
+            canonical = normalize_device_event(
+                event, source=self.event_source, collector=self.collector,
+                network_scope=self.assets.network_scope,
+            )
+        except Exception as exc:
+            logger.error("Failed to normalize canonical event: id=%s error=%s", event.event_id, type(exc).__name__)
+            return
+        self._save_security_event(canonical, event.mac_address)
+
+    def _save_security_event(self, canonical: SecurityEvent, mac_address: str | None) -> None:
+        try:
+            previous = self.security_events.get(canonical.event_id)
+            if previous is not None:
+                # Freeze the original association, including an unresolved asset.
+                asset_id = previous.asset_id
+            else:
+                asset_id = None
+                try:
+                    mac = normalize_mac(mac_address)
+                    if mac:
+                        asset = self.assets.get_by_mac(mac)
+                    elif canonical.subject is not None:
+                        asset = self.assets.get_by_ip_at(canonical.subject.ip_address, canonical.timestamp)
+                    else:
+                        asset = None
+                    asset_id = asset.asset_id if asset is not None else None
+                except Exception as exc:
+                    logger.warning("Canonical event asset lookup failed: id=%s error=%s", canonical.event_id, type(exc).__name__)
+            self.security_events.save(replace(canonical, asset_id=asset_id))
+        except Exception as exc:
+            # Driver errors can contain complete rows; do not log raw evidence.
+            logger.error("Failed to persist canonical event: id=%s error=%s", canonical.event_id, type(exc).__name__)
+
+    def persist_discovery_observations(self, devices: Iterable[DiscoveredDevice], *, collector: str = "network_discovery") -> None:
+        for device in devices:
+            self.persist_devices((device,))
+            try:
+                events = normalize_discovery_observation(
+                    device, collector=collector, network_scope=self.assets.network_scope,
+                )
+            except Exception as exc:
+                logger.error("Failed to normalize discovery evidence: error=%s", type(exc).__name__)
+                continue
+            for event in events:
+                self._save_security_event(event, device.mac_address)
 
     def persist_alert(self, alert: Alert) -> None:
         try:
@@ -64,11 +122,12 @@ class PersistingCollector:
 class PersistingDiscoverySink:
     """Best-effort raw discovery persistence callback for orchestrator sources."""
 
-    def __init__(self, persistence: RuntimePersistence):
+    def __init__(self, persistence: RuntimePersistence, *, collector: str = "network_discovery"):
         self.persistence = persistence
+        self.collector = collector
 
     def __call__(self, devices: Iterable[DiscoveredDevice]) -> None:
-        self.persistence.persist_devices(devices)
+        self.persistence.persist_discovery_observations(devices, collector=self.collector)
 
 
 class PersistingNotificationManager:

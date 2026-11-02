@@ -384,6 +384,23 @@ class AssetRepository:
         with self.storage.transaction() as connection:
             return self._get_by_ip(connection, ip_address)
 
+    def get_by_ip_at(self, ip_address: str, observed_at: datetime) -> Optional[Asset]:
+        """Read the known scoped assignment at event time without creating inventory."""
+        if not isinstance(observed_at, datetime) or observed_at.utcoffset() is None:
+            raise ValueError("observed_at must be a timezone-aware datetime")
+        with self.storage.transaction() as connection:
+            return self._get_by_ip_at(connection, ip_address, observed_at)
+
+    def _get_by_ip_at(self, connection, ip_address: str, observed_at: datetime) -> Optional[Asset]:
+        row = connection.execute(
+            """SELECT a.* FROM assets a JOIN asset_address_assignments aa ON aa.asset_id = a.asset_id
+            WHERE aa.ip_address = ? AND aa.network_scope = ? AND aa.assignment_started <= ?
+            AND (aa.assignment_ended IS NULL OR aa.assignment_ended > ?)
+            ORDER BY aa.assignment_started DESC LIMIT 1""",
+            (ip_address, self.network_scope, format_timestamp(observed_at), format_timestamp(observed_at)),
+        ).fetchone()
+        return self._asset_from_row(row) if row else None
+
     def _get_by_ip(self, connection, ip_address: str) -> Optional[Asset]:
         row = connection.execute(
             "SELECT a.* FROM assets a JOIN asset_addresses aa ON aa.asset_id = a.asset_id WHERE aa.ip_address = ? AND aa.network_scope = ? AND aa.assignment_ended IS NULL ORDER BY a.last_seen DESC LIMIT 1",
@@ -430,14 +447,7 @@ class AssetRepository:
             if asset:
                 return asset
         if ip_address:
-            row = connection.execute(
-                """SELECT a.* FROM assets a JOIN asset_address_assignments aa ON aa.asset_id = a.asset_id
-                WHERE aa.ip_address = ? AND aa.network_scope = ? AND aa.assignment_started <= ?
-                AND (aa.assignment_ended IS NULL OR aa.assignment_ended > ?)
-                ORDER BY aa.assignment_started DESC LIMIT 1""",
-                (ip_address, self.network_scope, format_timestamp(observed_at), format_timestamp(observed_at)),
-            ).fetchone()
-            asset = self._asset_from_row(row) if row else None
+            asset = self._get_by_ip_at(connection, ip_address, observed_at)
             if asset and (not mac_address or asset.is_provisional):
                 return asset
         return None

@@ -20,9 +20,11 @@ Each storage instance owns one connection and a lock that serializes transaction
 
 PostgreSQL inventory transactions additionally lock the asset and address tables before identity lookup to serialize independent writers. Ordinary reads remain available. An existing nonzero lock timeout is honored; otherwise a transaction-local five-second timeout bounds contention waits. A timeout rolls back the operation without automatic retry. This favors correctness over write throughput for the current low-volume monitor; see [concurrency details](asset-identity.md#concurrent-postgresql-writers).
 
-SQLite initializes tables and additive column checks in a transaction and records schema version 6. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL applies versioned migrations from [migrations.py](../../services/storage/migrations.py), currently version 2. These version numbers are separate implementation paths, not equivalent migration histories.
+SQLite initializes tables and additive column checks in a transaction and records schema version 7. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL applies versioned migrations from [migrations.py](../../services/storage/migrations.py), currently version 3. These version numbers are separate implementation paths, not equivalent migration histories.
 
 The interval upgrade seeds one assignment row from each existing address summary without changing asset IDs or deleting evidence. Initialization applies upgrades atomically; failures preserve the previous schema/version. Take a verified backup before deployment and stop old writers while upgrading; mixed-version writers are not supported. This development task validated upgrades only in disposable databases and did not migrate local/runtime data. Historical intervals already collapsed by older code cannot be reconstructed. Legacy replay keys remain stored; the first version-2 replay may add one evidence row.
+
+PostgreSQL migration 3 / SQLite schema 7 adds a separate `security_events` table and query indexes. It does not backfill legacy history or change inventory IDs. Its append-only [repository contract](security-events.md#canonical-repository) defines strict ID conflicts and bounded cursor queries. Asset associations are preserved soft references so deleting inventory does not rewrite canonical evidence. The existing ZTE monitor callback now saves canonical transitions independently of legacy history; existing commands still use legacy device/event/alert repositories.
 
 | Table | Purpose |
 | --- | --- |
@@ -32,6 +34,7 @@ The interval upgrade seeds one assignment row from each existing address summary
 | `asset_address_assignments` | Separate retained assignment intervals; at most one open interval per scope/IP |
 | `asset_observations` | Source evidence with derived-key duplicate suppression |
 | `device_events` | Device transitions and snapshots keyed by event ID |
+| `security_events` | Canonical versioned payload plus query columns; unique event IDs and strict replay/conflict handling |
 | `alerts` | Rule-generated alerts and originating event snapshots keyed by alert ID |
 
 Timestamps are serialized as UTC ISO text; metadata/snapshots are JSON text. Event and alert identities remain legacy MAC/IP keys, not asset-ID foreign keys.
@@ -39,6 +42,10 @@ Timestamps are serialized as UTC ISO text; metadata/snapshots are JSON text. Eve
 ## Runtime Integration
 
 `create_runtime()` initializes the selected backend before services start. Initialization failure prevents startup. `PersistingCollector` records ZTE snapshots before presence processing; event callbacks persist transitions; `PersistingNotificationManager` records generated alerts before outbound delivery.
+
+The event callback attempts both legacy and canonical history writes, then the monitor publishes the original event to its existing alert bus. It never publishes a second canonical event. Canonical association uses a known MAC or a scoped event-time address assignment and never creates inventory. Lookup failures may leave an event unassociated; canonical failures do not block legacy writes or alerts. The writes are independent, not atomic together. See [runtime ingestion](security-events.md#runtime-ingestion) for replay and delivery limits.
+
+The opt-in discovery sink additionally writes canonical sightings and actual hostname-resolution evidence after attempting inventory persistence. It uses deterministic observation IDs, not a new-asset classification, and never invokes the alert bus. Source batches and each resulting canonical record have independent best-effort writes. See [discovery evidence](security-events.md#discovery-evidence).
 
 Write failures after startup are logged and isolated from monitoring and notifications. Writes are synchronous and may delay a poll; no persistent queue, automatic retry, or delivery receipt ledger exists.
 
