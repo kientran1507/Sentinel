@@ -2,7 +2,7 @@
 
 Sentinel discovers LAN devices, monitors ZTE H3601P client presence, records inventory and history, and sends alerts through Discord and Telegram. It runs as one Python process with modular discovery, storage, alerting, and command services.
 
-Milestone 1 inventory implementation is complete: stable asset IDs, preserved assignment intervals, source evidence, replay/freshness rules, and tested PostgreSQL recovery. See the [acceptance matrix](docs/development/milestone-1-acceptance.md) and [deployment limits](docs/PROJECT_STATUS.md). Milestone 2 records [ZTE transitions and opt-in discovery/hostname evidence](docs/architecture/security-events.md) in canonical history; DHCP/mesh adapters and operational visibility remain in progress.
+Milestones 1 and 2 have completed implementation acceptance: durable inventory and address history, canonical source/transition events, ZTE collector health, explicit retention, and structured JSON logs/redaction. See the [inventory acceptance](docs/development/milestone-1-acceptance.md), [event-pipeline acceptance](docs/development/milestone-2-acceptance.md), and [deployment limits](docs/PROJECT_STATUS.md). No automatic cleanup is enabled; website work remains deferred.
 
 ## Setup
 

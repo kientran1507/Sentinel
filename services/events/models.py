@@ -25,6 +25,7 @@ class SecurityEventType(str, Enum):
     COLLECTOR_STARTED = "collector.started"
     COLLECTOR_STOPPED = "collector.stopped"
     COLLECTOR_ERROR = "collector.error"
+    COLLECTOR_RECOVERED = "collector.recovered"
 
 
 class EventSeverity(str, Enum):

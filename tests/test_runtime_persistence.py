@@ -67,6 +67,8 @@ class TestRuntimePersistence(unittest.TestCase):
             with patch.dict(os.environ, environment, clear=False):
                 runtime = create_runtime()
                 self.assertTrue(runtime.storage.is_initialized)
+                self.assertEqual(runtime.monitor.on_health.__name__, "persist_collector_health")
+                self.assertIs(runtime.monitor.on_health.__self__.storage, runtime.storage)
                 self.assertTrue(Path(path).is_file())
                 runtime.stop()
                 self.assertFalse(runtime.storage.is_initialized)

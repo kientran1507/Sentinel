@@ -45,18 +45,22 @@ Accepted limits: global MAC correlation cannot distinguish spoofed/reused identi
 
 Convert observations and transitions into a persistent, normalized `SecurityEvent` contract.
 
-Status: in progress from 2026-11-02. The [canonical contract, repository, ZTE transitions, and opt-in discovery/hostname evidence](docs/architecture/security-events.md) are implemented. Existing alerts, commands, and discovery output are preserved; DHCP/mesh adapters and operational visibility remain open.
+Status: implementation acceptance complete on 2026-11-04; see the [acceptance matrix](docs/development/milestone-2-acceptance.md). The [event pipeline](docs/architecture/security-events.md), source observations, ZTE health, explicit retention, and [structured logs/redaction](docs/monitoring/logging.md) are implemented. Existing alerts, commands, and collection output are preserved. Retention is not scheduled and live health counters have no external exporter; deployment certification is separate.
 
 - [x] Define and validate version-1 ID, UTC event time, type, severity, source/collector, optional asset association, subject/traffic endpoints, message, and JSON metadata.
 - [x] Add immutable evidence, strict JSON round-tripping, and an explicit legacy presence/field-change adapter without changing `DeviceEvent`, the event bus, alerts, or existing history.
 - [x] Normalize opt-in raw/merged discovery and actual hostname-resolution evidence, including unsuccessful attempts, with deterministic observation replay IDs and no extra alerts.
-- [ ] Normalize DHCP and mesh observations from actual router evidence without guessing lease or parent relationships.
+- [x] Normalize actual parsed DHCP/mesh observations independently of merged inventory, preserving reported lease/parent/signal fields without inventing lease events, parent assets, or alerts.
 - [x] Add separately migrated canonical event persistence, bounded intersecting/cursor queries, exact replay suppression, and explicit duplicate-ID/content conflicts on both backends.
 - [x] Connect best-effort ZTE transition ingestion with conservative asset association, independent failure boundaries, and stable replay links while preserving legacy history, alerts, and commands.
-- [ ] Add retention, structured JSON logs/redaction, and collector-health metrics.
-- [ ] Initially keep ingestion in process; evaluate lightweight transport such as Redis only when process separation is needed.
+- [x] Add ZTE collector lifecycle/error/recovery history and immutable process-local health counters/timestamps/duration without changing device presence or alert routing.
+- [x] Add explicit scoped canonical-history retention with dry-run defaults, bounded batches, and transaction rollback; leave deployment age/scheduling decisions explicit and preserve inventory/legacy history.
+- [x] Add structured JSON logs/redaction with failure-isolation tests; defer additional collector health/export to its explicit deployment/API scope.
+- [x] Keep ingestion in process; defer transport such as Redis until process separation is needed. No broker is required for this milestone.
 
 Candidate types include `asset.discovered`, `asset.updated`, `asset.online`, `asset.offline`, `asset.recovered`, `network.dhcp_observation`, `network.hostname_observation`, `network.mesh_observation`, and collector lifecycle/error events.
+
+Accepted limits: canonical ingestion and logs are best effort without durable replay queues; health is process-local plus historical lifecycle reports. Retention requires explicit maintenance and deployment policy; log rotation, external exporters, backup/restore, and live delivery drills remain operational/later-milestone work. The next roadmap task is Milestone 3 detection design.
 
 ## Milestone 3: Detection Engine
 
@@ -78,6 +82,8 @@ ARP/ICMP discovery alone cannot establish scan, authentication, or traffic-based
 Add acknowledgement, resolution, related-alert correlation, incident timelines, and investigation context. Preserve underlying alerts and events. Add notification retries, delivery history, storm prevention, and severity policies. Extract the notifier only after its responsibilities and contract are clear.
 
 ## Milestone 5: API and Dashboard
+
+The [web dashboard implementation plan](docs/development/web-dashboard-plan.md) records the proposed editable dashboard and health views. Website work remains deferred after Milestone 2 acceptance: preserve the milestone sequence and reconfirm scope before implementation. No web framework or dependency has been selected.
 
 Create authenticated, authorized APIs for assets, events, alerts, incidents, rules, collector health, and system status. Support bounded pagination and filtering. Build inventory/history, event search, alert lifecycle, incident timeline, and health views. Eventually make bot commands API clients.
 
@@ -111,7 +117,7 @@ Acceptance: demonstrate telemetry -> collection -> normalization -> persistence 
 ## Development Sequence
 
 1. Maintain the completed Milestone 1 contract and its regression coverage.
-2. Introduce the canonical event contract and persistence.
+2. Maintain the completed Milestone 2 event, health, retention, and logging contracts.
 3. Improve detections, alert lifecycle, and incidents.
 4. Add API/dashboard and extract processes only when justified.
 5. Add gateway, IDS, endpoint sources, and distributed sensors incrementally.

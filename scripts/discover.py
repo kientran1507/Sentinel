@@ -26,6 +26,8 @@ except ModuleNotFoundError:
     from services.discovery.arp_scanner import ARPScanner
     from services.discovery.orchestrator import DiscoveryOrchestrator
 
+from services.logging_config import configure_logging
+
 
 def to_dict(dev: DiscoveredDevice) -> dict:
     discovered_at = getattr(dev, "discovered_at", None)
@@ -126,4 +128,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    configure_logging()
     main()

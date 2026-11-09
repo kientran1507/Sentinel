@@ -170,7 +170,7 @@ class NotificationManager:
                 logger.info("Notification sent: provider=%s alert=%s", provider.name, alert.alert_id)
                 results[provider.name] = True
             except Exception as exc:
-                logger.error("Notification failed: provider=%s error=%s", provider.name, exc)
+                logger.error("Notification failed: provider=%s error=%s", provider.name, type(exc).__name__)
                 results[provider.name] = False
         return results
 
@@ -184,7 +184,7 @@ class NotificationManager:
                 provider.send_test()
                 results[provider.name] = True
             except Exception as exc:
-                logger.error("Connectivity test failed: provider=%s error=%s", provider.name, exc)
+                logger.error("Connectivity test failed: provider=%s error=%s", provider.name, type(exc).__name__)
                 results[provider.name] = False
         return results
 

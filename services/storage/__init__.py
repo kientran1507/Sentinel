@@ -11,6 +11,7 @@ from .runtime import PersistingCollector, PersistingDiscoverySink, PersistingNot
 from .sqlite import SQLiteStorage
 from .postgres import PostgreSQLStorage
 from .security_events import SecurityEventConflictError, SecurityEventCursor, SecurityEventRepository
+from .event_retention import EventRetentionResult, SecurityEventRetention
 
 __all__ = [
     "DEFAULT_DATABASE_PATH",
@@ -35,6 +36,8 @@ __all__ = [
     "SecurityEventConflictError",
     "SecurityEventCursor",
     "SecurityEventRepository",
+    "EventRetentionResult",
+    "SecurityEventRetention",
     "Storage",
     "StorageError",
     "StorageInitializationError",

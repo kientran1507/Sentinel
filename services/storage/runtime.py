@@ -6,8 +6,9 @@ from typing import Iterable
 
 from services.alerting.engine import Alert
 from services.alerting.notifications import NotificationManager
-from services.discovery.models import DeviceEvent, DiscoveredDevice, ZTEDevice
-from services.events import SecurityEvent, normalize_device_event, normalize_discovery_observation
+from services.discovery.models import DeviceEvent, DiscoveredDevice, ZTEDevice, ZTEObservation
+from services.discovery.collector_health import CollectorHealthEvent
+from services.events import SecurityEvent, normalize_device_event, normalize_discovery_observation, normalize_router_observation, normalize_collector_health
 
 from .alerts import AlertRepository
 from .assets import AssetRepository
@@ -41,14 +42,14 @@ class RuntimePersistence:
             try:
                 self.devices.save(device)
                 self.assets.record_observation(device)
-            except Exception:
-                logger.exception("Failed to persist device: mac=%s", getattr(device, "mac_address", None))
+            except Exception as exc:
+                logger.error("Failed to persist device: error=%s", type(exc).__name__)
 
     def persist_event(self, event: DeviceEvent) -> None:
         try:
             self.events.save(event)
-        except Exception:
-            logger.exception("Failed to persist device event: id=%s", event.event_id)
+        except Exception as exc:
+            logger.error("Failed to persist device event: id=%s error=%s", event.event_id, type(exc).__name__)
         self._persist_security_event(event)
 
     def _persist_security_event(self, event: DeviceEvent) -> None:
@@ -84,7 +85,12 @@ class RuntimePersistence:
             self.security_events.save(replace(canonical, asset_id=asset_id))
         except Exception as exc:
             # Driver errors can contain complete rows; do not log raw evidence.
-            logger.error("Failed to persist canonical event: id=%s error=%s", canonical.event_id, type(exc).__name__)
+            logger.error(
+                "Failed to persist canonical event: id=%s error=%s", canonical.event_id, type(exc).__name__,
+                extra={"event_id": canonical.event_id, "collector": canonical.collector,
+                       "network_scope": canonical.network_scope, "operation": "save_security_event",
+                       "error_type": type(exc).__name__},
+            )
 
     def persist_discovery_observations(self, devices: Iterable[DiscoveredDevice], *, collector: str = "network_discovery") -> None:
         for device in devices:
@@ -102,8 +108,27 @@ class RuntimePersistence:
     def persist_alert(self, alert: Alert) -> None:
         try:
             self.alerts.save(alert)
-        except Exception:
-            logger.exception("Failed to persist alert: id=%s", alert.alert_id)
+        except Exception as exc:
+            logger.error("Failed to persist alert: id=%s error=%s", alert.alert_id, type(exc).__name__)
+
+    def persist_router_observations(self, observations: Iterable[ZTEObservation]) -> None:
+        for observation in observations:
+            try:
+                event = normalize_router_observation(
+                    observation, collector=self.collector, network_scope=self.assets.network_scope,
+                )
+            except Exception as exc:
+                logger.error("Failed to normalize router evidence: error=%s", type(exc).__name__)
+                continue
+            self._save_security_event(event, observation.metadata.get("mac_address"))
+
+    def persist_collector_health(self, report: CollectorHealthEvent) -> None:
+        try:
+            event = normalize_collector_health(report, collector=self.collector, network_scope=self.assets.network_scope)
+        except Exception as exc:
+            logger.error("Failed to normalize collector health: error=%s", type(exc).__name__)
+            return
+        self._save_security_event(event, None)
 
 
 class PersistingCollector:
@@ -116,6 +141,9 @@ class PersistingCollector:
     def collect(self) -> list[ZTEDevice]:
         snapshot = self.collector.collect()
         self.persistence.persist_devices(snapshot)
+        observations = getattr(self.collector, "last_observations", ())
+        if isinstance(observations, tuple) and observations:
+            self.persistence.persist_router_observations(observations)
         return snapshot
 
 

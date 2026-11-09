@@ -9,11 +9,14 @@ from pathlib import Path
 from threading import Barrier
 from unittest.mock import patch
 
-from services.discovery.models import DeviceEvent, DeviceEventType
+from services.alerting.engine import Alert, AlertType, Severity
+from services.discovery.models import DeviceEvent, DeviceEventType, DiscoveredDevice
 from services.events import EventSeverity, NetworkEndpoint, SecurityEvent, SecurityEventType
 from services.storage import (
     Asset, AssetRepository, DeviceEventRepository, SecurityEventConflictError, SecurityEventCursor,
     SecurityEventRepository, SQLiteStorage,
+    SecurityEventRetention,
+    AlertRepository,
 )
 from services.storage.base import StorageInitializationError
 
@@ -212,6 +215,101 @@ class SecurityEventRepositoryContract:
         with self.storage.transaction() as connection:
             connection.execute("DELETE FROM assets WHERE asset_id = ?", (asset.asset_id,))
         self.assertEqual(self.security_events.get(event.event_id), event)
+
+    def test_retention_preview_is_default_and_uses_utc_exclusive_cutoff(self):
+        event = self.security_event()
+        self.security_events.save(event)
+        retention = SecurityEventRetention(self.storage)
+        self.assertEqual(retention.prune_before(event.timestamp, network_scope="lab").candidate_ids, ())
+        result = retention.prune_before(
+            (event.timestamp + timedelta(microseconds=1)).astimezone(timezone(timedelta(hours=7))),
+            network_scope="lab",
+        )
+        self.assertTrue(result.dry_run)
+        self.assertEqual(result.candidate_ids, (event.event_id,))
+        self.assertEqual(result.deleted_count, 0)
+        self.assertEqual(result.cutoff.utcoffset(), timedelta(0))
+        self.assertEqual(self.security_events.get(event.event_id), event)
+
+    def test_retention_batches_are_scoped_oldest_first_and_bounded(self):
+        base = self.security_event()
+        for event_id, seconds, scope in (("b", 0, "lab"), ("a", 0, "lab"),
+                                         ("c", 1, "lab"), ("other", 0, "other"),
+                                         ("boundary", 2, "lab"), ("new", 3, "lab")):
+            self.security_events.save(replace(base, event_id=event_id, network_scope=scope,
+                                             timestamp=base.timestamp + timedelta(seconds=seconds)))
+        retention = SecurityEventRetention(self.storage)
+        cutoff = base.timestamp + timedelta(seconds=2)
+        first = retention.prune_before(cutoff, network_scope="lab", limit=2, dry_run=False)
+        self.assertEqual(first.candidate_ids, ("a", "b"))
+        self.assertEqual(first.deleted_count, 2)
+        second = retention.prune_before(cutoff, network_scope="lab", limit=2, dry_run=False)
+        self.assertEqual(second.candidate_ids, ("c",))
+        self.assertEqual(second.deleted_count, 1)
+        self.assertEqual(retention.prune_before(cutoff, network_scope="lab", dry_run=False).deleted_count, 0)
+        self.assertEqual({event.event_id for event in self.security_events.query()}, {"other", "boundary", "new"})
+        self.assertEqual(retention.prune_before(cutoff, network_scope="' OR 1=1 --", dry_run=False).deleted_count, 0)
+
+    def test_retention_rejects_unsafe_inputs_before_opening_transaction(self):
+        retention = SecurityEventRetention(self.storage)
+        defaults = {"cutoff": self.security_event().timestamp, "network_scope": "lab"}
+        for changes in ({"cutoff": datetime(2026, 11, 2)}, {"cutoff": "yesterday"},
+                        {"network_scope": None}, {"network_scope": " "},
+                        {"limit": 0}, {"limit": 501}, {"limit": True}, {"limit": "10"},
+                        {"limit": 1.5}, {"dry_run": None}, {"dry_run": 0}, {"dry_run": "false"}):
+            with self.subTest(changes=changes), patch.object(self.storage, "transaction") as transaction:
+                with self.assertRaises(ValueError):
+                    retention.prune_before(**(defaults | changes))
+                transaction.assert_not_called()
+
+    def test_retention_rolls_back_failed_cleanup_and_recovers(self):
+        event = self.security_event()
+        self.security_events.save(event)
+        transaction = self.storage.transaction
+
+        @contextmanager
+        def interrupted():
+            with transaction() as connection:
+                yield connection
+                raise RuntimeError("injected cleanup failure")
+
+        retention = SecurityEventRetention(self.storage)
+        cutoff = event.timestamp + timedelta(seconds=1)
+        with patch.object(self.storage, "transaction", side_effect=interrupted):
+            with self.assertRaisesRegex(RuntimeError, "injected cleanup failure"):
+                retention.prune_before(cutoff, network_scope="lab", dry_run=False)
+        self.assertEqual(self.security_events.get(event.event_id), event)
+        self.assertEqual(retention.prune_before(cutoff, network_scope="lab", dry_run=False).deleted_count, 1)
+
+    def test_retention_preserves_inventory_and_legacy_history_after_reopen(self):
+        repository = AssetRepository(self.storage, network_scope="lab", vendor_lookup=lambda mac: None)
+        asset = repository.record_observation(DiscoveredDevice(
+            "198.51.100.10", mac_address="02:11:22:33:44:55", discovery_source="arp",
+            discovered_at=self.security_event().timestamp,
+        ))
+        legacy = DeviceEvent(DeviceEventType.DEVICE_OFFLINE, "02:11:22:33:44:55", event_id="legacy-retained")
+        DeviceEventRepository(self.storage).save(legacy)
+        alert = Alert(AlertType.DEVICE_OFFLINE, Severity.WARNING, "Offline", "Device offline", legacy)
+        AlertRepository(self.storage).save(alert)
+        tables = ("assets", "asset_addresses", "asset_address_assignments", "asset_observations",
+                  "device_events", "alerts")
+        with self.storage.transaction() as connection:
+            before = {table: connection.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall() for table in tables}
+        event = self.security_event(asset_id=asset.asset_id)
+        self.security_events.save(event)
+        SecurityEventRetention(self.storage).prune_before(
+            event.timestamp + timedelta(seconds=1), network_scope="lab", dry_run=False,
+        )
+        self.storage.close()
+        self.storage.initialize()
+        self.assertEqual(self.security_events.query(), [])
+        self.assertIsNotNone(repository.get_by_id(asset.asset_id))
+        self.assertIsNotNone(DeviceEventRepository(self.storage).get(legacy.event_id))
+        with self.storage.transaction() as connection:
+            after = {table: connection.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall() for table in tables}
+        self.assertEqual(before, after)
+        # Retention removes the replay/conflict record too; there is no tombstone.
+        self.assertEqual(self.security_events.save(event), event)
 
 
 class TestSQLiteSecurityEventRepository(SecurityEventRepositoryContract, unittest.TestCase):

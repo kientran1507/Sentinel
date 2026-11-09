@@ -8,7 +8,8 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
 
-from services.discovery.models import DeviceEvent, DeviceEventType, DiscoveredDevice
+from services.discovery.models import DeviceEvent, DeviceEventType, DiscoveredDevice, ZTEObservation
+from services.discovery.collector_health import CollectorHealthEvent, CollectorHealthSnapshot
 
 from .models import EventSeverity, NetworkEndpoint, SecurityEvent, SecurityEventType
 
@@ -108,3 +109,53 @@ def normalize_discovery_observation(
         )
         events.append(_observation_identity(hostname_event))
     return events
+
+
+def normalize_router_observation(
+    observation: ZTEObservation, *, collector: str = "zte", network_scope: str = "default",
+) -> SecurityEvent:
+    if not isinstance(observation, ZTEObservation):
+        raise ValueError("router normalization requires a ZTEObservation")
+    event_types = {
+        "zte_dhcp": SecurityEventType.DHCP_OBSERVATION,
+        "zte_mesh": SecurityEventType.MESH_OBSERVATION,
+    }
+    if not isinstance(observation.source, str) or observation.source not in event_types:
+        raise ValueError("unsupported router observation source")
+    if not isinstance(observation.metadata, Mapping):
+        raise ValueError("router evidence must be an object")
+    metadata = {"router_observation": observation.metadata}
+    subject = None
+    address = observation.metadata.get("ip_address")
+    if address:
+        try:
+            subject = NetworkEndpoint(address)
+        except ValueError:
+            metadata["normalization_warnings"] = ["invalid_subject_ip"]
+    event = SecurityEvent(
+        event_id="pending-observation-identity", event_type=event_types[observation.source],
+        timestamp=observation.observed_at, source=observation.source, collector=collector,
+        network_scope=network_scope, subject=subject,
+        message="Router DHCP client observation" if observation.source == "zte_dhcp" else "Router mesh client observation",
+        metadata=metadata,
+    )
+    return _observation_identity(event)
+
+
+def normalize_collector_health(
+    report: CollectorHealthEvent, *, collector: str = "zte", network_scope: str = "default",
+) -> SecurityEvent:
+    event_types = {
+        "started": SecurityEventType.COLLECTOR_STARTED, "stopped": SecurityEventType.COLLECTOR_STOPPED,
+        "error": SecurityEventType.COLLECTOR_ERROR, "recovered": SecurityEventType.COLLECTOR_RECOVERED,
+    }
+    if not isinstance(report, CollectorHealthEvent) or not isinstance(report.kind, str) or report.kind not in event_types:
+        raise ValueError("unsupported collector health event")
+    if not isinstance(report.health, CollectorHealthSnapshot):
+        raise ValueError("collector health snapshot is required")
+    return SecurityEvent(
+        event_id=report.event_id, event_type=event_types[report.kind], timestamp=report.timestamp,
+        source="zte_monitor", collector=collector, network_scope=network_scope,
+        severity=EventSeverity.ERROR if report.kind == "error" else EventSeverity.INFO,
+        message=f"Collector {report.kind}", metadata={"health": report.health.to_dict()},
+    )

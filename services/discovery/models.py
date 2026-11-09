@@ -41,6 +41,13 @@ class DiscoveredDevice:
             self.discovered_at = datetime.now(timezone.utc)
 
 
+@dataclass(frozen=True)
+class ZTEObservation:
+    source: str
+    observed_at: datetime
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass
 class ZTEDevice:
     mac_address: str

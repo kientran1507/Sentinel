@@ -1,8 +1,8 @@
 # Canonical Security Events
 
-Milestone 2 (2026-11-02): a validated version-1 contract, explicit legacy transition adapter, and append-only canonical repository. The contract lives in [services/events](../../services/events/__init__.py); persistence lives in [security_events.py](../../services/storage/security_events.py).
+Milestone 2 implementation acceptance is complete on 2026-11-04: version-1 canonical events, source/transition adapters, append-only ingestion, scoped retention, ZTE health, and structured logs/redaction. See the [acceptance matrix](../development/milestone-2-acceptance.md). The contract lives in [services/events](../../services/events/__init__.py); persistence lives in [security_events.py](../../services/storage/security_events.py).
 
-Canonical persistence, best-effort ZTE transition ingestion, and opt-in discovery/hostname observations are connected on both backends. The monitor callback saves legacy and canonical history before the original event continues to the alert bus. The separate discovery sink writes evidence without publishing alerts. This does not replace `DeviceEvent`, change alert rules, migrate existing history, or expose new commands.
+Canonical persistence, ZTE transitions, actual parsed DHCP/mesh observations, and opt-in discovery/hostname evidence are connected on both backends. Monitor transitions continue to the original alert bus; observation records do not. This does not replace `DeviceEvent`, change alert rules, migrate existing history, or expose new commands.
 
 ## Version 1 Contract
 
@@ -24,7 +24,7 @@ Canonical persistence, best-effort ZTE transition ingestion, and opt-in discover
 
 Each endpoint contains `ip_address` and nullable `port`. IPv4/IPv6 literals are validated and normalized without DNS or network requests. Ports are integers from 0 through 65535, never booleans. MACs, hostnames, state snapshots, and other non-endpoint evidence can remain in metadata.
 
-Supported type vocabulary: `asset.discovered`, `asset.updated`, `asset.online`, `asset.offline`, `asset.recovered`, `network.discovery_observation`, `network.dhcp_observation`, `network.hostname_observation`, `network.mesh_observation`, `collector.started`, `collector.stopped`, and `collector.error`. Declaring a type does not mean that its collector or normalization path exists yet.
+Supported type vocabulary: `asset.discovered`, `asset.updated`, `asset.online`, `asset.offline`, `asset.recovered`, `network.discovery_observation`, `network.dhcp_observation`, `network.hostname_observation`, `network.mesh_observation`, `collector.started`, `collector.stopped`, `collector.error`, and `collector.recovered`. Declaring a type does not mean that its collector or normalization path exists yet.
 
 `to_dict()` returns a detached JSON-compatible object. `from_dict()` requires the complete version-1 shape, including nullable fields, and rejects unknown/missing fields. Constructors provide defaults for local producers; wire ingestion does not silently generate replacement IDs or timestamps. Future versions require explicit compatibility handling rather than silently dropping fields.
 
@@ -59,7 +59,21 @@ PostgreSQL migration 3 and SQLite schema 7 add `security_events` and indexes wit
 
 Query results default to 50 and allow integer limits from 1 through 500. Ordering is descending event time then event ID, with fixed-microsecond UTC query timestamps. For older pages, pass `before=SecurityEventCursor.from_event(last_event_on_page)` with the same filters. The cursor is exclusive and handles equal-time ties without offsets. Pages are not a database snapshot: later inserts earlier than the cursor can appear, while inserts newer than it will not. Limits bound returned rows, not database execution cost.
 
-The repository exposes no update/delete/retention operation, automatic import, or unbounded list method. All SQL values are parameterized. Direct SQL modifications to payload or query columns are outside this contract.
+The ingestion repository exposes no update/delete operation, automatic import, or unbounded list method. Explicit retention uses the separate maintenance interface below. All SQL values are parameterized. Direct SQL modifications to payload or query columns are outside this contract.
+
+## Explicit Retention
+
+`SecurityEventRetention(storage).prune_before(cutoff, network_scope=..., limit=100, dry_run=True)` previews one batch of canonical history. The caller must supply a timezone-aware event-time cutoff and a nonempty scope. UTC normalization matches repository queries; events exactly at the cutoff are retained. All canonical types/severities in that scope are eligible, including health records. There is no implicit age, severity exemption, all-scope operation, or wall-clock policy.
+
+The default is read-only preview. Actual deletion requires the boolean `dry_run=False`; strings, integers, and other truthy values are rejected. Each call selects the oldest eligible rows by timestamp then ID, with an integer batch size of 1 through 500. Selection and deletion share one transaction, and failures roll back the batch. Results are returned only after commit. The immutable result contains the normalized cutoff, scope, mode, selected `candidate_ids`, and actual `deleted_count` (zero for previews). It includes no evidence payloads.
+
+A preview does not reserve rows or approve a future run. Each call reevaluates candidates. Concurrent maintenance may remove selected rows first, so candidate count can exceed the actual deleted count. Database lock/transaction errors propagate without automatic retries. A bounded row count does not bound query time, lock wait, disk usage, or total history size. Operators must coordinate maintenance, handle failures, and explicitly request further batches; there is no internal loop or ingestion-time cleanup.
+
+Only `security_events` rows are removed. Assets, address summaries/assignment intervals, inventory observations, legacy device events, and alerts are unchanged. Deleted IDs leave no tombstones: later replay may recreate an event and resolve its asset association again. Conflict/replay guarantees apply only while a canonical row remains stored. Very late evidence can be inserted behind the cutoff and become eligible on the next run. Existing event pages are not snapshots and may change during maintenance.
+
+The operating policy is retain-all until explicit maintenance is invoked. Before enabling cleanup in a deployment, the owner must choose a retention age, approve evidence-loss/backup implications, and define scheduling and audit requirements. This interface has no scheduler, CLI command, deployment configuration, or automatic runtime wiring. Do not log evidence or credentials when reporting maintenance results. A retention failure cannot interrupt monitoring through this interface because ingestion never invokes it.
+
+No schema migration, dependency, or environment setting is required. Shared repository tests exercise dry runs, UTC/cutoff boundaries, scoped batching, rejected inputs, rollback/recovery, unchanged inventory/legacy history, and replay after deletion on SQLite and PostgreSQL. Development validation uses disposable data only.
 
 ## Runtime Ingestion
 
@@ -69,7 +83,7 @@ Asset association is read-only: a valid MAC uses the existing global inventory i
 
 Legacy writes, canonical reads/writes, optional asset lookup, and alert delivery have separate failure boundaries. A canonical failure is logged without raw payload/driver details and does not stop the callback or the original alert path; a legacy write failure does not skip canonical persistence. The two history writes are not a single atomic transaction and can diverge during an outage. Writes remain synchronous and can delay polling. There is no queue, guaranteed delivery, automatic write replay, or automatic backfill of missing associations. Events can be lost during persistence failures.
 
-Existing `/events` and `/alert-history` continue querying legacy history, not the canonical table. DHCP, mesh, and collector lifecycle/error records still need dedicated adapters; the type vocabulary alone does not enable them.
+Existing `/events` and `/alert-history` continue querying legacy history, not the canonical table. ZTE collector health is recorded through a separate callback, not through the device alert bus.
 
 ## Discovery Evidence
 
@@ -83,11 +97,48 @@ Observation IDs use an `observation:v1:` SHA-256 digest of canonical JSON for th
 
 No DHCP lease, mesh relationship, or security verdict is inferred from ARP/ICMP sightings or hostname resolution. No database migration is required for the additional version-1 event kind. CLI JSON/CSV output, scanner merge behavior, notifications, and startup/configuration behavior are unchanged. Each canonical write fails independently so a rejected discovery record does not prevent its hostname record or the next device from being attempted.
 
-## Remaining Work
+## Router Evidence
 
-1. Add DHCP/mesh normalization only for actual router evidence, not inference from IP changes or repeated sightings.
-2. Add collector lifecycle/error records and health metrics so missing telemetry is visible.
-3. Define retention and structured JSON logging/redaction. Raw metadata is not automatically safe to log; producers must exclude secrets before persistence or export.
+`ZTECollector` preserves parsed source records as a transient `last_observations` tuple of `ZTEObservation` values, separate from its unchanged merged `ZTEDevice` list. A successful poll publishes evidence from both DHCP/LAN and mesh responses, including records skipped from inventory because a MAC is missing. The tuple is cleared at poll start; if either fetch fails, no source evidence from that incomplete poll is published or replayed. The existing failed-poll/unknown-presence behavior is unchanged. Collector instances are intended for serial polling.
+
+`PersistingCollector` attempts merged inventory persistence first, then independently processes the tuple. Legacy/custom collectors without that tuple keep their previous behavior; parent/interface fields on a merged snapshot alone do not fabricate source observations. Router normalization uses the existing deterministic observation-ID and conservative asset-association rules. A repeated tuple is suppressed, while a later poll time produces new evidence. These are sampling times, not lease-grant or network-change timestamps.
+
+| Record | Preserved parsed fields |
+| --- | --- |
+| `network.dhcp_observation`, source `zte_dhcp` | Instance ID, IP, MAC, hostname, interface, reported remaining-lease text |
+| `network.mesh_observation`, source `zte_mesh` | IP, MAC, hostname, node name, connection type, parent MAC, reported RSSI |
+
+The collector explicitly selects these fields and does not copy arbitrary parser `raw` dictionaries or response bodies. Source data lives under `metadata.router_observation`; conflicting DHCP/mesh values remain separate rather than being replaced by merged winners. Lease units/expiry are not inferred. Parent strings are source evidence, not validated topology edges, trust decisions, or instructions to create parent assets. Raw signal text is retained even when the merged snapshot normalizes it to a number.
+
+Missing/invalid IPs remain raw evidence without invented endpoints. Missing MACs may leave events unassociated; ingestion does not create inventory just to attach them. Independent inventory/canonical failures do not abort a successful snapshot or skip later source records. No source observation creates an alert. The first baseline poll may now save router observations even though it still emits no presence transitions or discovery alerts.
+
+This increment adds no schema migration, environment settings, queue, notification, or live diagnostic request. Each successful poll can add new observation rows; automated retention remains unimplemented and must be addressed before production reliance.
+
+## Collector Health
+
+The integrated runtime connects `ZTEMonitor.on_health` to `RuntimePersistence.persist_collector_health()`. A `collector.started` record is emitted when the polling loop enters, `collector.stopped` when it exits, `collector.error` for each failed poll, and one `collector.recovered` on the next successful poll after failures. Initial/repeated healthy polls do not create additional health records. These use source `zte_monitor`, the configured collector label/scope, fresh event IDs, and no asset or endpoint. Health reports never go through device alert rules.
+
+`monitor.health.snapshot()` returns an immutable, lock-protected process-local snapshot: `unknown`/`healthy`/`degraded`, completed/successful/failed poll totals, consecutive failures, UTC completion/success/failure times, latest duration, and the last failure class/stage. Counts describe completed polls, not in-flight attempts. A new monitor starts with zero counters; restarting the same object retains them. Durable health records do not hydrate live counters after a process restart. Last failure details remain historical after recovery; the current state and consecutive-failure count distinguish recovery.
+
+Elapsed time and polling cadence use a monotonic clock. Failure stages distinguish `collection`, `presence`, and `publication`; a processing/publication error must not be presented as proof the router is unreachable. Collection failures retain unknown network state and do not increment missing-device counters. Successful empty snapshots still follow the existing presence/debounce rules. Optional persistence callbacks isolate their own failures, and asynchronous subscriber delivery is outside this poll-health measurement. Successful polling is not proof of database durability, alert delivery, or complete telemetry coverage.
+
+Canonical health metadata includes counters, timestamps, duration, exception class, and stage, not raw exception messages, credentials, or response bodies. Health callback/normalization/write failures are isolated and do not change a poll's recorded outcome or stop alerts. Lifecycle reports are best effort: abrupt process termination may leave no stopped record, database outages may lose reports, and there is no periodic durable heartbeat or dead-process detector. The standalone discovery helper is not health-instrumented by this increment.
+
+Start failures reset the monitor's running flag. A stop waits up to five seconds and warns if the thread remains alive; a new thread cannot start while that worker is alive. Stop requests do not forcibly interrupt blocked I/O or guarantee report flushing. The stopped event reflects polling-loop exit, not proof of a clean process-wide shutdown.
+
+These metrics are available programmatically, not through a new endpoint or changed bot status response. No exporter, alert policy, dependency, environment value, or schema migration is added.
+
+## Structured Operational Logs
+
+The CLI-owned monitoring handler emits version-1 JSON lines with UTC log time, severity, logger, a bounded summary, and allowlisted operational context. Failure paths classify errors without dumping provider/driver text. Exception chains, tracebacks, arbitrary extras, and evidence objects are omitted; supported credential patterns/configured values and URLs are redacted. Failed CLI log sinks drop records without printing the unformatted record. See the [logging guide](../monitoring/logging.md) for configuration ownership, field limits, and remaining privacy/delivery limits.
+
+Logs are operational diagnostics, separate from canonical event evidence. Redaction does not make raw metadata safe to log, persist, or export. Producers must exclude secrets; embedding applications must configure their own handlers.
+
+## Deferred Operational Work
+
+1. Choose retention age/scheduling/audit policy before deployment activation and validate evidence-loss/backup implications; no automatic cleanup is enabled.
+2. Extend health instrumentation to additional collectors and expose metrics through an explicitly scoped API/exporter when that capability is implemented.
+3. Validate production backup/restore, network-partition timing, log collection/rotation, and live delivery independently of implementation acceptance.
 
 No Redis, new dependencies, queue, retention job, metrics endpoint, or second bus subscriber is introduced. Initialization will apply the additive migration when this code is deployed; this development run upgrades only disposable test databases and does not start the real monitor or migrate local data.
 
@@ -99,4 +150,10 @@ The shared [ingestion tests](../../tests/test_security_event_ingestion.py) also 
 
 The [discovery tests](../../tests/test_discovery_events.py) cover stable IDs, detached evidence, successful/unsuccessful resolver attempts, raw/merged output, generator inputs, scoped observations, reopen/replay, independent failures, and unchanged alerts/CLI output. Shared ingestion scenarios run on SQLite and PostgreSQL with mocked scanners/resolvers.
 
-Validation on 2026-11-02: all 309 tests passed, including 66 PostgreSQL integration tests, with no skips. Compilation, documentation links, and whitespace checks passed. Disposable databases were removed; environment values and runtime/local inventory data were not changed. See [project status](../PROJECT_STATUS.md) for the complete validation record.
+The shared [router tests](../../tests/test_router_events.py) add source-specific evidence, unchanged merge precedence, excluded unknown raw fields, missing MACs, failed-poll clearing, independent write failures, replay/reopen, and later poll coverage on both backends.
+
+The [health tests](../../tests/test_collector_health.py) cover counters, immutable snapshots, stage classification, no false offline decisions, callback isolation, monotonic timing, lifecycle/start/stop edge cases, and replay/reopen. Shared persistence scenarios run on both backends without device alerts or inventory creation. Latest results are recorded in [project status](../PROJECT_STATUS.md).
+
+The [logging tests](../../tests/test_logging_config.py) cover JSON/UTC output, secret patterns/known values, omitted exceptions/evidence, bounded records, invalid formatting, host ownership, failed sinks, and unchanged callback/notification behavior.
+
+Final validation on 2026-11-04: 373 tests passed, including 83 PostgreSQL integration tests, with no skips. Source compilation, documentation links, and whitespace checks passed. Test databases were removed, and protected configuration/local data were unchanged. The real monitor and external services were not started.

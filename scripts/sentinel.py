@@ -28,6 +28,7 @@ from services.discovery.presence_tracker import PresenceTracker
 from services.discovery.zte_collector import ZTECollector
 from services.discovery.zte_h3601p_client import ZTEH3601PClient
 from services.discovery.zte_monitor import ZTEMonitor
+from services.logging_config import configure_logging
 from services.storage import (
     PersistingCollector,
     PersistingNotificationManager,
@@ -246,6 +247,7 @@ def create_runtime() -> SentinelRuntime:
             presence_tracker=presence_tracker,
             on_event=persistence.persist_event,
             event_bus=event_bus,
+            on_health=persistence.persist_collector_health,
         )
         history_service = HistoryService(persistence.events, persistence.alerts)
         handler = CommandHandler(registry, monitor=monitor, alert_history=alert_history, history_service=history_service, asset_repository=persistence.assets)
@@ -266,7 +268,7 @@ def create_runtime() -> SentinelRuntime:
 
 
 def run_runtime(output: TextIO = sys.stdout) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    configure_logging()
     try:
         runtime = create_runtime()
     except RuntimeError as exc:

@@ -244,27 +244,27 @@ class ZTEH3601PClient:
                     return body
             except urllib.error.HTTPError as exc:
                 last_exception = exc
-                sanitized_exc = _sanitize_log_message(str(exc))
+                error_type = type(exc).__name__
                 # Permanent 4xx: no retry, keep logs quiet for expected missing tags.
                 if exc.code in (404, 400, 401, 403, 405, 410):
-                    logger.debug("Request failed with HTTP %s: %s", exc.code, sanitized_exc)
+                    logger.debug("Request failed with HTTP %s: %s", exc.code, error_type)
                     break
                 logger.warning(
                     "Request attempt %d/%d failed: %s",
                     attempt,
                     self.max_retries,
-                    sanitized_exc,
+                    error_type,
                 )
                 if attempt < self.max_retries:
                     time.sleep(0.2 * (2 ** (attempt - 1)))
             except Exception as exc:
                 last_exception = exc
-                sanitized_exc = _sanitize_log_message(str(exc))
+                error_type = type(exc).__name__
                 logger.warning(
                     "Request attempt %d/%d failed: %s",
                     attempt,
                     self.max_retries,
-                    sanitized_exc,
+                    error_type,
                 )
                 if attempt < self.max_retries:
                     time.sleep(0.2 * (2 ** (attempt - 1)))
@@ -283,7 +283,7 @@ class ZTEH3601PClient:
                 self._page_session_token = match.group(1)
                 logger.debug("Extracted _sessionTOKEN from initial page HTML")
         except Exception as exc:
-            logger.warning("Session initialization GET / failed: %s", _sanitize_log_message(str(exc)))
+            logger.warning("Session initialization GET / failed: %s", type(exc).__name__)
 
     def get_session_token(self) -> str:
         """Obtain CSRF/session token from GET login_entry (required for login POST).
@@ -487,7 +487,7 @@ class ZTEH3601PClient:
             detail = f"router locked for {locking_time} seconds"
         else:
             detail = login_err_msg or prompt_msg or "authentication rejected"
-        logger.error("Authentication failed for user %s (Error: %s)", self.username, detail)
+        logger.error("Router authentication rejected")
         raise RuntimeError(f"Login failed: Router rejected credentials ({detail})")
 
     def _post_login_refresh(self):
@@ -517,7 +517,7 @@ class ZTEH3601PClient:
         except Exception as exc:
             logger.warning(
                 "Post-login page refresh failed: %s",
-                _sanitize_log_message(str(exc)),
+                type(exc).__name__,
             )
 
     def _is_session_expired(self, response_body: str) -> bool:
@@ -650,7 +650,7 @@ class ZTEH3601PClient:
             logger.warning(
                 "Error querying tag %s, attempting re-authentication: %s",
                 endpoint_tag,
-                message,
+                type(exc).__name__,
             )
             self.login()
             return _fetch()
@@ -750,7 +750,7 @@ class ZTEH3601PClient:
                 logger.warning(
                     "DHCP candidate %s failed: %s",
                     endpoint_tag,
-                    _sanitize_log_message(str(exc)),
+                    type(exc).__name__,
                 )
         raise RuntimeError(
             f"Unable to fetch DHCP/LAN clients from router: {_sanitize_log_message(str(last_error))}"
@@ -770,7 +770,7 @@ class ZTEH3601PClient:
                     self._missing_menu_data.add("topo_lua.lua")
                 logger.debug(
                     "topo_lua.lua unavailable (%s); using access-device endpoints",
-                    _sanitize_log_message(str(exc)),
+                    type(exc).__name__,
                 )
 
         # Fallback: synthesize topology-like records from LAN + Wi-Fi device lists.
@@ -809,7 +809,7 @@ class ZTEH3601PClient:
                 logger.debug(
                     "Mesh fallback candidate %s failed: %s",
                     endpoint_tag,
-                    _sanitize_log_message(str(exc)),
+                    type(exc).__name__,
                 )
         if clients:
             return clients

@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
-from services.discovery.models import ZTEDevice
+from services.discovery.models import ZTEDevice, ZTEObservation
 from services.discovery.zte_h3601p_client import ZTEH3601PClient
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ class ZTECollector:
 
     def __init__(self, client: ZTEH3601PClient):
         self.client = client
+        self.last_observations: tuple[ZTEObservation, ...] = ()
 
     def _is_wireless(self, interface: Optional[str], conn_type: Optional[str]) -> bool:
         for val in (interface, conn_type):
@@ -37,22 +38,33 @@ class ZTECollector:
     def collect(self) -> List[ZTEDevice]:
         """Fetch current DHCP and Mesh topology, merge duplicates, and return ZTEDevices."""
         logger.info("Collecting device data from ZTE router")
+        self.last_observations = ()
 
         # Retrieve raw DHCP clients
         try:
             dhcp_clients = self.client.get_dhcp_clients()
         except Exception as e:
-            logger.error("Error retrieving DHCP clients: %s", e)
+            logger.error("Error retrieving DHCP clients: %s", type(e).__name__)
             raise
 
         # Retrieve raw Mesh topology
         try:
             mesh_clients = self.client.get_mesh_topology()
         except Exception as e:
-            logger.error("Error retrieving Mesh topology: %s", e)
+            logger.error("Error retrieving Mesh topology: %s", type(e).__name__)
             raise
 
         now = datetime.now(timezone.utc)
+        observations = [ZTEObservation("zte_dhcp", now, {
+            "instance_id": dc.instance_id, "ip_address": dc.ip_address,
+            "mac_address": dc.mac_address, "hostname": dc.hostname,
+            "interface": dc.interface, "remaining_lease": dc.remaining_lease,
+        }) for dc in dhcp_clients]
+        observations.extend(ZTEObservation("zte_mesh", now, {
+            "ip_address": mc.ip_address, "mac_address": mc.mac_address,
+            "hostname": mc.hostname, "node_name": mc.node_name,
+            "connection_type": mc.connection_type, "parent_mac": mc.parent_mac, "rssi": mc.rssi,
+        }) for mc in mesh_clients)
         devices_by_mac: Dict[str, ZTEDevice] = {}
 
         # 1. Process DHCP clients
@@ -132,4 +144,5 @@ class ZTECollector:
                     last_seen=now,
                 )
 
+        self.last_observations = tuple(observations)
         return list(devices_by_mac.values())
