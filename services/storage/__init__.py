@@ -12,6 +12,7 @@ from .sqlite import SQLiteStorage
 from .postgres import PostgreSQLStorage
 from .security_events import SecurityEventConflictError, SecurityEventCursor, SecurityEventRepository
 from .event_retention import EventRetentionResult, SecurityEventRetention
+from .detections import DetectionRepository
 
 __all__ = [
     "DEFAULT_DATABASE_PATH",
@@ -38,6 +39,7 @@ __all__ = [
     "SecurityEventRepository",
     "EventRetentionResult",
     "SecurityEventRetention",
+    "DetectionRepository",
     "Storage",
     "StorageError",
     "StorageInitializationError",

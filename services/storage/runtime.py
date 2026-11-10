@@ -8,6 +8,7 @@ from services.alerting.engine import Alert
 from services.alerting.notifications import NotificationManager
 from services.discovery.models import DeviceEvent, DiscoveredDevice, ZTEDevice, ZTEObservation
 from services.discovery.collector_health import CollectorHealthEvent
+from services.detection import CollectorFailureRule, DetectionEngine, RuleRegistry, UnknownAssetRule
 from services.events import SecurityEvent, normalize_device_event, normalize_discovery_observation, normalize_router_observation, normalize_collector_health
 
 from .alerts import AlertRepository
@@ -15,6 +16,7 @@ from .assets import AssetRepository
 from .device_events import DeviceEventRepository
 from .devices import DeviceRepository, normalize_mac
 from .security_events import SecurityEventRepository
+from .detections import DetectionRepository
 from .base import Storage
 from .config import get_network_scope
 
@@ -27,6 +29,7 @@ class RuntimePersistence:
     def __init__(
         self, storage: Storage, network_scope: str | None = None, *,
         event_source: str = "presence_tracker", collector: str = "zte",
+        detection_rules=None,
     ):
         self.storage = storage
         self.devices = DeviceRepository(storage)
@@ -34,6 +37,11 @@ class RuntimePersistence:
         self.events = DeviceEventRepository(storage)
         self.alerts = AlertRepository(storage)
         self.security_events = SecurityEventRepository(storage)
+        self.findings = DetectionRepository(storage)
+        self.detection_engine = DetectionEngine(
+            RuleRegistry((UnknownAssetRule(), CollectorFailureRule()) if detection_rules is None else detection_rules),
+            assets=self.assets, events=self.security_events, findings=self.findings,
+        )
         self.event_source = event_source
         self.collector = collector
 
@@ -82,7 +90,7 @@ class RuntimePersistence:
                     asset_id = asset.asset_id if asset is not None else None
                 except Exception as exc:
                     logger.warning("Canonical event asset lookup failed: id=%s error=%s", canonical.event_id, type(exc).__name__)
-            self.security_events.save(replace(canonical, asset_id=asset_id))
+            saved = self.security_events.save(replace(canonical, asset_id=asset_id))
         except Exception as exc:
             # Driver errors can contain complete rows; do not log raw evidence.
             logger.error(
@@ -91,6 +99,11 @@ class RuntimePersistence:
                        "network_scope": canonical.network_scope, "operation": "save_security_event",
                        "error_type": type(exc).__name__},
             )
+            return
+        try:
+            self.detection_engine.process(saved)
+        except Exception as exc:
+            logger.error("Detection dispatch failed: error=%s", type(exc).__name__)
 
     def persist_discovery_observations(self, devices: Iterable[DiscoveredDevice], *, collector: str = "network_discovery") -> None:
         for device in devices:

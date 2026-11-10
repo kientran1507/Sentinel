@@ -21,12 +21,13 @@ from tests.test_security_event_ingestion import SecurityEventIngestionContract
 from tests.test_discovery_events import DiscoveryEventIngestionContract
 from tests.test_router_events import RouterEventIngestionContract
 from tests.test_collector_health import CollectorHealthIngestionContract
+from tests.test_detection import DetectionRepositoryContract, DetectionIngestionContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, unittest.TestCase):
+class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, unittest.TestCase):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")
@@ -434,3 +435,32 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
         self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".security_events",)).fetchone()[0])
         self.storage.initialize()
         self.security_events.save(self.security_event())
+
+    def test_version_three_upgrade_preserves_canonical_history(self):
+        event = self.security_event()
+        self.security_events.save(event)
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_evidence")
+            connection.execute("DROP TABLE detection_findings")
+            connection.execute("UPDATE storage_metadata SET schema_version = 3")
+        for _ in range(2):
+            self.storage.close()
+            self.storage.initialize()
+        self.assertEqual(self.security_events.get(event.event_id), event)
+        self.assertEqual(self.detection_repository.query(), [])
+
+    def test_failed_detection_migration_preserves_version_three(self):
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_evidence")
+            connection.execute("DROP TABLE detection_findings")
+            connection.execute("UPDATE storage_metadata SET schema_version = 3")
+        self.storage.close()
+        broken = Migration(4, "failed detection upgrade", MIGRATIONS[3].statements + ("INVALID SQL",))
+        with patch("services.storage.migrations.MIGRATIONS", MIGRATIONS[:3] + (broken,)):
+            with self.assertRaises(StorageInitializationError):
+                self.storage.initialize()
+        version = self.admin.execute(f"SELECT schema_version FROM {self.schema}.storage_metadata").fetchone()[0]
+        self.assertEqual(version, 3)
+        self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".detection_findings",)).fetchone()[0])
+        self.storage.initialize()
+        self.assertEqual(self.detection_repository.query(), [])

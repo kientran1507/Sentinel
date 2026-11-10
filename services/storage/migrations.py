@@ -48,6 +48,26 @@ SECURITY_EVENT_STATEMENTS = (
 )
 
 
+DETECTION_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS detection_findings (
+        finding_id TEXT PRIMARY KEY, rule_id TEXT NOT NULL, network_scope TEXT NOT NULL,
+        asset_id TEXT, last_seen TEXT NOT NULL, payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')), resolved_at TEXT,
+        CHECK ((status = 'open' AND resolved_at IS NULL) OR (status = 'resolved' AND resolved_at IS NOT NULL))
+    )""",
+    """CREATE TABLE IF NOT EXISTS detection_evidence (
+        finding_id TEXT NOT NULL, event_id TEXT NOT NULL,
+        PRIMARY KEY (finding_id, event_id),
+        FOREIGN KEY (finding_id) REFERENCES detection_findings(finding_id) ON DELETE CASCADE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_detections_scope_time ON detection_findings (network_scope, last_seen, finding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_detections_asset_time ON detection_findings (asset_id, last_seen, finding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_detections_rule_time ON detection_findings (rule_id, last_seen, finding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_detections_status_time ON detection_findings (status, last_seen, finding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_detection_evidence_event ON detection_evidence (event_id, finding_id)",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -111,6 +131,7 @@ MIGRATIONS = (
     ),
     Migration(2, "preserve address assignment intervals", ADDRESS_HISTORY_STATEMENTS),
     Migration(3, "canonical security events", SECURITY_EVENT_STATEMENTS),
+    Migration(4, "canonical detection findings", DETECTION_STATEMENTS),
 )
 
 
