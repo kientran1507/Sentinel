@@ -28,6 +28,7 @@ Local `devices` reads a new process-local registry, normally empty. `--refresh` 
 | `/alerts` | Recent in-memory alerts |
 | `/events` | Persisted device events |
 | `/alert-history` | Persisted alerts; Discord spelling is `/alert_history` |
+| `/findings` | Persisted detection findings and current lifecycle state in the runtime's configured scope |
 
 Assets without a live match show `UNKNOWN`. A nonempty durable inventory does not union in live-only devices. No remote command triggers scanning or hostname/vendor lookup.
 
@@ -60,3 +61,18 @@ Filters currently select one query path rather than intersecting: events prefer 
 Event type filters use serialized values: `NEW_DEVICE`, `DEVICE_ONLINE`, `DEVICE_OFFLINE`, `IP_CHANGED`, `HOSTNAME_CHANGED`, or `CONNECTION_CHANGED`. The code names `DEVICE_DISCOVERED` and `DEVICE_RECOVERED` serialize as `NEW_DEVICE` and `DEVICE_ONLINE` respectively.
 
 See [storage](architecture/persistent-storage.md) for restart behavior and [troubleshooting](troubleshooting/common-issues.md).
+
+## Detection Findings
+
+The integrated runtime exposes `/findings` through the shared allowlisted command handler and native Discord registration. It queries the runtime's configured network scope and defaults to five open findings. Limits accept 1 through 5 to keep both platform responses bounded. Status accepts `open`, `resolved`, or `all`.
+
+```text
+/findings
+/findings --limit 2
+/findings --status resolved
+/findings --limit 5 --status all
+```
+
+Discord exposes named `limit` and `status` options. Results include the finding ID, rule, severity, lifecycle state, initial evidence time, summary, and evidence count. Summaries and rule labels are bounded for display. Telegram uses plain text for these responses, and Discord uses an embed.
+
+Scope is supplied by runtime wiring. Missing storage or scope returns an unavailable response. Invalid/repeated options are rejected, query errors discard partial results, and the existing allowlist/rate-limit checks run before storage access. The handler exposes finding inspection. Resolution currently uses the internal repository method described in the detection contract. [Finding lifecycle](architecture/detection-engine.md#lifecycle)

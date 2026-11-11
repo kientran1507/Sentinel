@@ -66,6 +66,15 @@ class DiscordCommandBot:
         async def alerts_command(interaction):
             await respond(interaction, "alerts")
 
+        @tree.command(name="findings", description="Show detection findings")
+        async def findings_command(interaction, limit: int | None = None, status: str | None = None):
+            args = []
+            if limit is not None:
+                args.extend(["--limit", str(limit)])
+            if status is not None:
+                args.extend(["--status", status])
+            await respond(interaction, "findings", args)
+
         @tree.command(name="events", description="Show historical device events")
         async def events_command(interaction, limit: int | None = None, device: str | None = None, type: str | None = None):
             args = []

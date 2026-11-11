@@ -1,12 +1,14 @@
 # Project Status
 
-Code review snapshot: 2026-11-04. This page records implementation boundaries, not deployment certification or a fixed test count.
+Code review snapshot: 2026-11-09. This page records implementation boundaries, not deployment certification or a fixed test count.
 
 ## Milestone Position
 
-Milestone 0 is substantially complete. Milestones 1 and 2 have completed implementation acceptance under the [inventory matrix](development/milestone-1-acceptance.md) and [event-pipeline matrix](development/milestone-2-acceptance.md). Canonical source/transition history, ZTE health, explicit retention, and structured JSON logging/redaction are implemented while preserving existing presence and alerts. Next is Milestone 3 detection design; no Milestone 3 code has been started. Website work remains deferred. Production deployment validation is separate.
+Milestones 1 and 2 have completed implementation acceptance. Milestone 3 is in progress with versioned rules, a registry, durable findings, evidence links, configurable fixed windows, deduplication, and explicit resolution. The current rules cover associated presence-discovery events and repeated collector failures. [Detection architecture](architecture/detection-engine.md)
 
 The Milestone 1 checkpoint closed inventory/history gaps with PostgreSQL migration 2 and SQLite schema 6. Milestone 2 adds PostgreSQL migration 3 / SQLite schema 7 for an empty canonical table and indexes, without backfilling legacy history. Only disposable databases were upgraded; runtime/local data and environment configuration were not modified.
+
+Milestone 3 adds PostgreSQL migration 4 / SQLite schema 8 for finding evidence and lifecycle state. Development validation applies these upgrades to disposable databases. The rule catalog records implemented coverage and telemetry dependencies. [Rule catalog](monitoring/detection-rules.md)
 
 ## Implemented
 
@@ -18,6 +20,9 @@ The Milestone 1 checkpoint closed inventory/history gaps with PostgreSQL migrati
 - Canonical discovery/hostname/DHCP/mesh evidence and transition history with strict replay/conflict and bounded filtering/cursors.
 - ZTE lifecycle/error/recovery history and immutable local health snapshots; explicit scoped canonical-history maintenance defaults to dry run.
 - Structured CLI JSON logs with bounded allowlisted context, credential redaction, omitted exception payloads, and safe log-sink failure handling. See [logging](monitoring/logging.md) for host integration and privacy limits.
+- ASSET-001 findings for associated discovery events whose current inventory identity is untrusted, and OPS-001 findings for repeated collector errors.
+- Transactional finding/evidence writes, durable first-match deduplication, bounded queries, and an explicit open-to-resolved lifecycle with concurrent retry safety.
+- Scoped `/findings` through existing Discord/Telegram authorization and rate limits, with bounded open/resolved/all results.
 
 ## Verification Boundaries
 
@@ -28,6 +33,8 @@ Normal PostgreSQL test discovery requires `SENTINEL_TEST_DATABASE_URL`; missing 
 Full-suite validation on 2026-10-19 passed all 224 tests, including 33 PostgreSQL integration tests, with no skips. Source compilation and `git diff --check` passed. Disposable databases were removed afterward. Controlled session loss is not arbitrary network-partition or production restore certification.
 
 Milestone 2 final acceptance on 2026-11-04 passed all 373 tests, including 83 PostgreSQL integration tests, with no skips. Coverage includes source provenance, replay/conflicts, health/lifecycle failures, unchanged presence/alerts, scoped retention and rollback, JSON/redaction, host-owned logging, and failed log sinks. Compilation, documentation links, and whitespace checks passed. The disposable PostgreSQL database was removed; protected configuration/local data were unchanged. External services were mocked; no live monitoring, runtime cleanup, migration of runtime data, or deployment was performed.
+
+Milestone 3 foundation validation on 2026-11-09 passed all 451 tests, including 118 PostgreSQL cases, with no skips. New coverage includes rule/finding validation, current trust, scope/source isolation, fixed-window counting, late evidence, timestamp bounds, independent finding writers, lifecycle races, replay/restart, rollback, backend upgrades, monitor-to-finding-to-existing-alert behavior, and authorized/scoped findings commands with bounded platform rendering. Disposable PostgreSQL and temporary SQLite data provided the validation boundary. Source compilation, documentation links, whitespace, and protected-file checks passed.
 
 Known storage limits:
 
@@ -41,7 +48,9 @@ See [asset identity](architecture/asset-identity.md) and [storage](architecture/
 
 ## Remaining Work
 
-Milestone 3 begins with the detection contract, supported telemetry, thresholds, deduplication, and false-positive scenarios. Explicit retention maintenance is available, but deployment age, scheduling, evidence-loss/backup implications, and maintenance auditing need owner decisions before activation. ZTE health does not yet cover standalone discovery, expose an exporter, or guarantee database/notification delivery. Router records preserve reported values, not inferred lease grants or authoritative topology. Automatic retention remains absent. Before production reliance, validate backup/restore, real network-partition timing, writer shutdown during upgrades, live bot delivery, log collection/rotation, and deployment hardening.
+Milestone 3 next needs coverage decisions for startup/standalone-discovery findings and finding delivery. Planned scan/authentication/restricted-access rules depend on their telemetry ingestion and controlled scenarios. Finding resolution currently uses an internal repository method with an explicit timestamp. Operator state-change authorization, actor/reason audit, acknowledgement, reopening, automatic closure, and incident workflows need subsequent lifecycle design.
+
+Deployment work includes retention age/scheduling/audit decisions, coordinated finding/evidence retention, backup/restore, real network-partition timing, upgrades with stopped writers, live notification delivery, log collection/rotation, and deployment hardening. Additional collector health and external metrics/API access follow their roadmap scope.
 
 Broader event-source ingestion, correlation, REST API/dashboard, metrics export, IDS/gateway behavior, and packaged Docker/K3s deployments remain future work. See the [roadmap](development/roadmap.md).
 

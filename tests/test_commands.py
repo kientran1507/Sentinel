@@ -122,7 +122,7 @@ class TestCommands(unittest.TestCase):
         client = bot._build_client(FakeDiscord)
         self.assertFalse(client.intents.message_content)
         tree = FakeTree.last
-        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history"})
+        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings"})
         self.assertEqual(set(client.events), {"on_ready", "setup_hook"})
         asyncio.run(client.events["setup_hook"]())
         self.assertTrue(tree.synced_global)
@@ -140,6 +140,9 @@ class TestCommands(unittest.TestCase):
         interaction = type("Interaction", (), {"user": User(), "response": Response()})()
         asyncio.run(tree.commands["help"](interaction))
         self.assertEqual(interaction.response.text.kwargs["title"], "Sentinel Commands")
+        with patch.object(self.handler, "handle", wraps=self.handler.handle) as dispatch:
+            asyncio.run(tree.commands["findings"](interaction, limit=2, status="resolved"))
+            dispatch.assert_called_once_with("/findings --limit 2 --status resolved", platform="discord", user_id="20")
 
         with patch.dict("os.environ", {"DISCORD_GUILD_ID": "123456789"}):
             guild_bot = DiscordCommandBot("token", self.handler)

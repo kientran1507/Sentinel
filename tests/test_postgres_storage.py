@@ -22,12 +22,13 @@ from tests.test_discovery_events import DiscoveryEventIngestionContract
 from tests.test_router_events import RouterEventIngestionContract
 from tests.test_collector_health import CollectorHealthIngestionContract
 from tests.test_detection import DetectionRepositoryContract, DetectionIngestionContract
+from tests.test_findings_commands import FindingsCommandContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, unittest.TestCase):
+class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, unittest.TestCase):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")

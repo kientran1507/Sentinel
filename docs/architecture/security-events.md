@@ -85,6 +85,8 @@ Legacy writes, canonical reads/writes, optional asset lookup, and alert delivery
 
 Existing `/events` and `/alert-history` continue querying legacy history, not the canonical table. ZTE collector health is recorded through a separate callback, not through the device alert bus.
 
+Milestone 3 evaluates successfully stored canonical events through the detection engine. Associated discovery events and collector error windows can produce durable findings with separate evidence/lifecycle persistence. Explicit replay can retry evaluation against current inventory trust and retained event history. [Detection contract](detection-engine.md)
+
 ## Discovery Evidence
 
 `PersistingDiscoverySink` now calls `RuntimePersistence.persist_discovery_observations()`. In the CLI this is still opt-in through `--orchestrator --persist`. It receives raw ARP/ICMP batches and final merged/enriched results from the existing orchestrator. Inventory/observation writes are attempted first, then independent canonical writes; a failed inventory write does not automatically skip canonical evidence. The input iterable is processed once, including generators.

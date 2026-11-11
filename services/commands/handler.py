@@ -24,6 +24,7 @@ HELP_TEXT = """Sentinel Commands
 /alerts   Show recent alerts
 /events   Show persisted device event history
 /alert-history  Show persisted alert history
+/findings  Show detection findings
 /help     Show this help"""
 UNAUTHORIZED = "You are not authorized to use Sentinel commands."
 
@@ -48,6 +49,8 @@ class CommandHandler:
         alert_history: Optional[AlertHistory] = None,
         history_service: Optional[HistoryService] = None,
         asset_repository=None,
+        detection_repository=None,
+        detection_scope: str | None = None,
         allowed_users: Optional[Dict[str, Iterable[str]]] = None,
         rate_limit: int = 10,
         rate_window: float = 30.0,
@@ -57,6 +60,8 @@ class CommandHandler:
         self.alert_history = alert_history or AlertHistory()
         self.history_service = history_service
         self.asset_repository = asset_repository
+        self.detection_repository = detection_repository
+        self.detection_scope = detection_scope
         configured = allowed_users or {
             "discord": parse_allowed_ids(os.getenv("DISCORD_ALLOWED_USER_IDS")),
             "telegram": parse_allowed_ids(os.getenv("TELEGRAM_ALLOWED_USER_IDS")),
@@ -107,11 +112,12 @@ class CommandHandler:
             "alerts": self._alerts,
             "events": self._events,
             "alert-history": self._alert_history,
+            "findings": self._findings,
         }
         handler = handlers.get(command.name)
         if not handler:
             return CommandResponse("Unknown command. Use /help.", ok=False)
-        if command.args and command.name not in {"events", "alert-history"}:
+        if command.args and command.name not in {"events", "alert-history", "findings"}:
             return CommandResponse("This command does not accept arguments. Use /help.", ok=False, command=command.name)
         return handler(command.name, command.args)
 
@@ -321,3 +327,50 @@ class CommandHandler:
             return options, None
         except (ValueError, TypeError):
             return None, CommandResponse(f"Usage: /{command_name} [limit] [device]", ok=False, command=command_name)
+
+    def _findings(self, command_name="findings", args=None):
+        if self.detection_repository is None or not isinstance(self.detection_scope, str) or not self.detection_scope.strip():
+            return CommandResponse("Detection storage is unavailable.", ok=False, command=command_name)
+        args = args or []
+        options = {"--limit": "5", "--status": "open"}
+        try:
+            if len(args) % 2:
+                raise ValueError("option requires a value")
+            seen = set()
+            for index in range(0, len(args), 2):
+                option = args[index]
+                if option not in options or option in seen:
+                    raise ValueError("unknown or repeated option")
+                seen.add(option)
+                options[option] = args[index + 1]
+            limit = int(options["--limit"])
+            status = options["--status"]
+            if not 1 <= limit <= 5 or status not in {"open", "resolved", "all"}:
+                raise ValueError("unsupported finding filter")
+        except ValueError:
+            return CommandResponse("Use /findings [--limit 1-5] [--status open|resolved|all].",
+                                   ok=False, command=command_name)
+        try:
+            findings = self.detection_repository.query(
+                network_scope=self.detection_scope, status=None if status == "all" else status, limit=limit,
+            )
+            items = []
+            lines = ["Sentinel Findings", ""]
+            for finding in findings:
+                state = self.detection_repository.get_state(finding.finding_id)
+                if state is None:
+                    raise ValueError("finding state is unavailable")
+                item = {"finding_id": finding.finding_id, "rule_id": finding.rule_id[:32],
+                        "severity": finding.severity.value, "status": state.status.value,
+                        "message": finding.message[:160], "timestamp": finding.last_seen.isoformat(),
+                        "evidence_count": len(finding.event_ids)}
+                items.append(item)
+                lines.extend([f"{item['rule_id']} [{item['severity']}] {item['status']}", item["finding_id"],
+                              item["message"], f"{item['timestamp']} ({item['evidence_count']} evidence records)", ""])
+            if not items:
+                lines.append("No matching findings.")
+            return CommandResponse("\n".join(lines).rstrip(), command=command_name,
+                                   data={"findings": items, "limit": limit, "status": status})
+        except Exception as exc:
+            logger.error("Detection query failed: error=%s", type(exc).__name__)
+            return CommandResponse("Sentinel could not read detection findings.", ok=False, command=command_name)

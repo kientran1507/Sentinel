@@ -39,7 +39,8 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
             "/status — Show Sentinel status\n"
             "/alerts — Show recent alerts\n"
             "/events — Show historical device events\n"
-            "/alert-history — Show historical alerts\n\n"
+            "/alert-history — Show historical alerts\n"
+            "/findings — Show detection findings\n\n"
             "<b>General</b>\n\n/help — Show this help",
             "HTML",
         )
@@ -58,6 +59,8 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
                 lines.extend([f"{_status_icon(device['state'])} <b>{name}</b>", f"   State: <b>{state}</b>", f"   IP: <code>{ip}</code>", f"   MAC: <code>{mac}</code>", f"   Vendor: {vendor}", ""])
             lines.extend(["━━━━━━━━━━━━━━━━", f"Total: <b>{data['total']}</b>", f"🟢 Online: {data['online']}", f"🔴 Offline: {data['offline']}", f"⚪ Unknown: {data['unknown']}"])
         return "\n".join(lines), "HTML"
+    if command == "findings":
+        return response.text, None
     if command == "status":
         return ("\n".join([
             "<b>Sentinel Status</b>", "", f"🟢 Monitor: <b>{html.escape(data['monitor'])}</b>", "",
@@ -122,9 +125,11 @@ def render_discord(response: CommandResponse, discord_module=None):
     command = response.command
     if command == "help":
         embed = discord.Embed(title="Sentinel Commands", color=0x2F80ED)
-        embed.add_field(name="Monitoring", value="`/devices`  Show discovered devices\n`/status`   Show Sentinel status\n`/alerts`   Show recent alerts\n`/events`   Show historical events\n`/alert-history`   Show historical alerts", inline=False)
+        embed.add_field(name="Monitoring", value="`/devices`  Show discovered devices\n`/status`   Show Sentinel status\n`/alerts`   Show recent alerts\n`/events`   Show historical events\n`/alert-history`   Show historical alerts\n`/findings`   Show detection findings", inline=False)
         embed.add_field(name="General", value="`/help`     Show this help", inline=False)
         return embed
+    if command == "findings":
+        return discord.Embed(title="Sentinel Findings", description=response.text.split("\n\n", 1)[-1], color=0x2F80ED)
     if command == "devices":
         embed = discord.Embed(title="Sentinel Devices", color=0x2F80ED)
         if not data["devices"]:

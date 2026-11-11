@@ -66,9 +66,23 @@ Accepted limits: canonical ingestion and logs are best effort without durable re
 
 Build rule interfaces, a registry, configurable thresholds/time windows, deduplication, and an alert lifecycle. Document each rule's required telemetry, logic, severity, false positives, response, test scenario, and limitations.
 
+Status is in progress from 2026-11-09. The [detection engine](docs/architecture/detection-engine.md) evaluates persisted canonical events and records durable findings. The [rule catalog](docs/monitoring/detection-rules.md) defines the implemented coverage and future telemetry requirements.
+
+- [x] Add versioned rule/finding contracts and a validated registry.
+- [x] Add ASSET-001 for associated presence-discovery events with current inventory trust checks.
+- [x] Add OPS-001 for repeated collector failures with configurable fixed UTC windows and bounded threshold queries.
+- [x] Persist first-match findings, soft evidence links, scoped/policy deduplication, and explicit open-to-resolved state.
+- [x] Isolate evaluation failures and verify existing event/alert behavior on SQLite and PostgreSQL.
+- [x] Test migrations, rollback, concurrent writers/resolution, replay/restart, trust, and time boundaries.
+- [x] Document logic, required evidence, false positives, response, and validation scenarios.
+- [x] Expose scoped findings through existing allowlisted Discord/Telegram commands with bounded responses.
+- [ ] Review startup/standalone-discovery coverage, finding delivery policy, and audited operator state changes.
+- [ ] Implement and validate planned scan, authentication, and restricted-access rules as their telemetry becomes available.
+
 | Rule | Purpose | Required evidence |
 | --- | --- | --- |
 | ASSET-001 | Unknown device | New asset without trusted identity |
+| OPS-001 | Repeated collector failures | Canonical collector error history |
 | NET-001 | Network scan | Connection or scan telemetry |
 | NET-002 | Network sweep | Many destinations within a time window |
 | AUTH-001 | Repeated authentication failures | Authentication logs from one source |

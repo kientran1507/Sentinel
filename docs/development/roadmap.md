@@ -14,9 +14,11 @@ The [acceptance matrix](milestone-1-acceptance.md) verifies inventory identity, 
 
 The [acceptance matrix](milestone-2-acceptance.md) records completed implementation acceptance on 2026-11-04: canonical events, source observations, ZTE health, scoped retention on both backends, and structured JSON logs/redaction. Existing presence and alert behavior is preserved. Retention defaults to dry run without a runtime schedule or implicit age. Health snapshots and lifecycle history are not a general metrics exporter.
 
-## Next Milestone
+## Milestone 3 In Progress
 
-Milestone 3 starts with a detection contract: required telemetry, rule interfaces, false positives, thresholds, deduplication, and links to canonical evidence. Reuse available observations without inferring scan/authentication/traffic detections from ARP/ICMP presence. No new rule behavior has been implemented by the Milestone 2 checkpoint.
+The [detection engine](../architecture/detection-engine.md) now provides versioned rules, a registry, durable findings/evidence links, configurable thresholds and fixed windows, concurrent deduplication, and explicit resolution. The [rule catalog](../monitoring/detection-rules.md) covers implemented ASSET-001 discovery/trust checks and OPS-001 collector failures.
+
+Authorized operators can inspect scoped results with `/findings`. Next are startup/standalone-discovery coverage, finding delivery policy, and audited state-change decisions. Scan/authentication/restricted-access rule families require their planned telemetry ingestion and controlled validation. Milestone 3 remains in progress under those explicit dependencies.
 
 Before production reliance, separately validate backup/restore, upgrades with stopped writers, platform delivery, timeout behavior during real network partitions, retention, and deployment hardening. Durable retry queues and cross-backend import require explicit scope; neither is implicit fallback behavior.
 
