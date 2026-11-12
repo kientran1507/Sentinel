@@ -24,7 +24,8 @@ class _PostgresConnection:
 
 class PostgreSQLStorage(Storage):
     def json_text_expression(self, column: str, field: str) -> str:
-        return f"(CAST({column} AS jsonb) ->> '{field}')"
+        path = ",".join(field.split("."))
+        return f"(CAST({column} AS jsonb) #>> '{{{path}}}')"
 
     def __init__(self, database_url=None):
         self.database_url = database_url if database_url is not None else get_database_url()
@@ -58,6 +59,8 @@ class PostgreSQLStorage(Storage):
             except Exception as exc:
                 if connection is not None:
                     connection.close()
+                if isinstance(exc, StorageInitializationError):
+                    raise
                 raise StorageInitializationError("could not initialize PostgreSQL storage") from exc
 
     @contextmanager

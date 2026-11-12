@@ -32,6 +32,7 @@ class SecurityEventRetention:
     def prune_before(
         self, cutoff: datetime, *, network_scope: str,
         limit: int = 100, dry_run: bool = True,
+        source: str | None = None, collector: str | None = None,
     ) -> EventRetentionResult:
         cutoff = _utc(cutoff)
         _required_text(network_scope, "network_scope")
@@ -40,20 +41,25 @@ class SecurityEventRetention:
         if type(dry_run) is not bool:
             raise ValueError("dry_run must be a boolean")
         timestamp = _timestamp(cutoff)
+        clauses = ["network_scope = ?", "timestamp < ?"]
+        parameters = [network_scope, timestamp]
+        for field, value in (("source", source), ("collector", collector)):
+            if value is not None:
+                clauses.append(f"{field} = ?")
+                parameters.append(_required_text(value, field))
+        where = " AND ".join(clauses)
         with self.storage.transaction() as connection:
             rows = connection.execute(
-                "SELECT event_id FROM security_events WHERE network_scope = ? AND timestamp < ? "
-                "ORDER BY timestamp ASC, event_id ASC LIMIT ?",
-                (network_scope, timestamp, limit),
+                "SELECT event_id FROM security_events WHERE " + where + " ORDER BY timestamp ASC, event_id ASC LIMIT ?",
+                tuple(parameters) + (limit,),
             ).fetchall()
             candidates = tuple(row["event_id"] for row in rows)
             deleted_count = 0
             if candidates and not dry_run:
                 placeholders = ", ".join("?" for _ in candidates)
                 cursor = connection.execute(
-                    "DELETE FROM security_events WHERE network_scope = ? AND timestamp < ? "
-                    f"AND event_id IN ({placeholders})",
-                    (network_scope, timestamp) + candidates,
+                    "DELETE FROM security_events WHERE " + where + f" AND event_id IN ({placeholders})",
+                    tuple(parameters) + candidates,
                 )
                 deleted_count = cursor.rowcount
             result = EventRetentionResult(cutoff, network_scope, dry_run, candidates, deleted_count)

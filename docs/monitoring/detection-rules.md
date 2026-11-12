@@ -1,21 +1,23 @@
 # Detection Rule Catalog
 
-Milestone 3 currently evaluates `ASSET-001` and `OPS-001` after canonical persistence. Findings carry warning severity and preserve the canonical evidence IDs used by the first match. Authorized operators can inspect results with `/findings`. The detection contract defines evaluation, lifecycle, and deduplication. [Detection engine](../architecture/detection-engine.md)
+Milestone 3 evaluates all seven rule IDs after canonical persistence. Findings carry warning severity and preserve the canonical evidence IDs used by the first match. Authorized operators inspect results with `/findings`. Activity rules accept explicit canonical telemetry through the import workflow. [Activity evidence](../architecture/activity-evidence.md)
 
-## ASSET-001 — Newly Discovered Untrusted Asset
+## ASSET-001 — Observed Untrusted Asset
 
 | Property | Contract |
 | --- | --- |
-| Version and severity | Version 1, `warning` |
-| Required telemetry | Canonical `asset.discovered` with an associated inventory asset ID |
+| Version and severity | Version 2, `warning` |
+| Required telemetry | Canonical `asset.discovered`, `network.discovery_observation`, `network.dhcp_observation`, or `network.mesh_observation` with an associated inventory asset ID |
 | Logic | Look up the associated asset and match when its current `trust_level` differs from the exact value `trusted` |
 | Grouping | One retained finding per rule version, asset ID, and network scope |
-| Evidence | The first matching canonical discovery event and its UTC timestamp |
+| Evidence | The first matching canonical sighting or discovery transition and its UTC timestamp |
 | Suggested response | Verify the device owner and expected network membership, then review inventory trust |
 | False positives | Legitimate onboarding, randomized MACs, incomplete trust administration, and shared/spoofed MAC identity |
 | Regression scenarios | Baseline followed by a new device, trusted asset suppression, missing association, replay/restart, independent failures, and one existing device notification |
 
-Coverage follows presence-tracker discovery transitions. Startup baselines and raw ARP/ICMP/DHCP/mesh observations retain their existing observation semantics. Broader first-inventory discovery coverage requires an explicit creation-signal contract. Missing asset association or an unavailable trust lookup can leave the rule unevaluated. Later explicit replay can retry against current inventory state.
+Coverage includes startup DHCP/mesh evidence and opt-in ARP/ICMP discovery. A sighting can flag an existing untrusted asset when version 2 first evaluates it. Missing asset association or an unavailable trust lookup can leave the rule unevaluated. Explicit replay can retry against current trust, while canonical asset associations retain their original value. Hostname-only evidence is outside this rule's accepted event types.
+
+Version 2 expands the original presence-discovery coverage. Existing version-1 findings retain their evidence and lifecycle. Version-aware deduplication permits one additional version-2 finding for an asset already represented under version 1. Within version 2, startup, repeated sightings, MAC-less promotion, presence transitions, and restart converge on the same asset/scope finding.
 
 Trust follows the existing global MAC/inventory identity policy. Scope qualifies finding identity and evidence. Current trust is evaluated when the rule runs, including historical replay. Legacy notifications continue using their existing device-event rules. [Identity contract](../architecture/asset-identity.md)
 
@@ -26,7 +28,7 @@ Trust follows the existing global MAC/inventory identity policy. Scope qualifies
 | Version and severity | Version 1, `warning` |
 | Required telemetry | Stored `collector.error` events with explicit source, collector, scope, and UTC timestamps |
 | Default logic | At least 3 distinct failure IDs in one fixed 300-second UTC window |
-| Configuration | `CollectorFailureRule(threshold=3, window_seconds=300)` through application construction |
+| Configuration | Startup flags `--collector-failure-threshold` and `--collector-failure-window`, or `CollectorFailureRule(threshold=3, window_seconds=300)` through application construction |
 | Grouping | Source, collector, scope, rule/version, and window/policy settings |
 | Evidence | The configured threshold number of newest stored matching failures available at first match |
 | Suggested response | Inspect collector health and failure stages, then check collection, processing, or publication dependencies |
@@ -37,16 +39,16 @@ For a five-minute policy, windows run from 00:00 up to 00:05 UTC, then 00:05 up 
 
 Collector errors cover collection, presence processing, and publication stages. The finding summary reports failed polls. Root-cause investigation uses the corresponding health evidence. Resolution is explicit, and a recovered collector can still have an open historical finding.
 
-## Planned Rule Families
+## Activity Rules
 
-These entries define future telemetry and review scenarios. Implementation starts when the corresponding ingestion contract and controlled test evidence are available.
+The following version-1 rules use fixed UTC windows and exact scope/source/collector grouping. Default windows are 300 seconds. Counts, windows, sensor labels, grouping values, and rule versions qualify finding identity. `ActivityRule(rule_id, threshold=..., window_seconds=...)` supports thresholds from 1 through 500 and windows from 1 through 86400 seconds. The default registry supplies the thresholds below. [Evidence contract and import](../architecture/activity-evidence.md)
 
-| Rule | Required evidence and candidate logic | Candidate severity | False positives and review | Controlled validation |
+| Rule | Evidence and grouping | Default threshold | False positives and response | Controlled validation |
 | --- | --- | --- | --- | --- |
-| NET-001, network scan | Connection/IDS evidence showing one source contacting multiple ports within a configured window | Warning | Authorized scanners and service discovery; inspect source ownership and destinations | Generate an authorized lab port scan and compare distinct-port thresholds |
-| NET-002, network sweep | Connection/IDS evidence showing one source contacting many destinations within a configured window | Warning | Asset management and orchestration; inspect intended destination scope | Sweep an isolated lab subnet and verify unique-destination grouping |
-| AUTH-001, repeated authentication failures | Authentication outcomes with source/service/account identity and a bounded per-source failure window | Warning | Mistyped credentials and stale automation; inspect service logs and account ownership | Use synthetic or authorized lab failures around the threshold |
-| AUTH-002, distributed authentication failures | Authentication evidence across sources/accounts/services with an explicit correlation policy | Warning | Shared gateways and identity-provider outages; inspect attribution and shared infrastructure | Replay labelled failures from multiple test sources |
-| NET-003, restricted network access | Gateway/firewall decisions plus an explicit network policy defining prohibited source/destination/service access | Warning | Policy mistakes and legitimate exceptions; review the matching policy and flow evidence | Exercise allowed and prohibited lab flows with safe rollback |
+| NET-001, network scan | Distinct destination ports for one source IP, destination IP, and transport | 10 | Authorized scanning and service discovery. Verify the source owner and target services | Repeated traffic to one port stays below threshold. A second distinct port completes a configured threshold of 2 |
+| NET-002, network sweep | Distinct destination IPs for one source IP and transport across ports | 10 | Asset management and orchestration. Review intended destination scope | Synthetic connections to separate destinations reach the configured unique-address threshold |
+| AUTH-001, repeated authentication failures | Failure event IDs for one source IP, target IP, service, and account | 5 | Mistyped credentials or stale automation. Review service logs and account ownership | Same-source failures reach threshold while other accounts, services, and targets stay separate |
+| AUTH-002, distributed authentication failures | Distinct source IPs targeting one IP, service, and account | 3 | Shared gateways or widespread stale credentials. Check source attribution and service health | Separate synthetic sources reach threshold. Repeated failures from one source contribute one representative |
+| NET-003, restricted network access | Explicit policy-labelled denials for one source IP, destination IP/port, transport, and policy ID | 1 | Expected enforcement or policy mistakes. Verify the producer's policy attribution and approved access | Labelled denials trigger review. Different policy IDs and flows stay separate |
 
-ARP/ICMP sightings and hostname resolution provide presence evidence. Scan, authentication, and access-control rules require their additional telemetry and false-positive tests. Existing records can support future correlation once those inputs and rule contracts are established.
+Each activity finding retains the threshold number of newest matching canonical representatives available at first evaluation. All five rules have controlled synthetic acceptance on SQLite and PostgreSQL, including replay, isolation, and failure handling. Presence evidence continues through ASSET-001. Live traffic/authentication adapters, gateway policy mapping, labelled lab scenarios, and false-positive tuning remain deployment gates. AUTH-002 currently correlates a single target account/service across sources. Broader cross-account/service correlation needs a separate policy and rule version.

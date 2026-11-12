@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from typing import Deque, Dict, Iterable, Optional
 from services.discovery.device_registry import DeviceRegistry
 from services.alerting.engine import AlertType, Severity
 from services.discovery.models import DeviceEventType
+from services.detection import FindingCursor
 from services.storage.history import HistoryService
 
 from .history import AlertHistory
@@ -25,6 +27,8 @@ HELP_TEXT = """Sentinel Commands
 /events   Show persisted device event history
 /alert-history  Show persisted alert history
 /findings  Show detection findings
+/finding  Inspect a detection finding
+/resolve-finding  Resolve a finding with an audited reason
 /help     Show this help"""
 UNAUTHORIZED = "You are not authorized to use Sentinel commands."
 
@@ -86,7 +90,7 @@ class CommandHandler:
         if command.name == "__malformed__":
             return CommandResponse("Malformed command. Use /help.", ok=False)
         try:
-            return self._dispatch(command)
+            return self._dispatch(command, platform=platform, user_id=str(user_id))
         except Exception:
             logger.exception("Command failed: platform=%s command=%s", platform, command.name)
             return CommandResponse("Sentinel could not process that command.", ok=False)
@@ -104,7 +108,9 @@ class CommandHandler:
         requests.append(now)
         return True
 
-    def _dispatch(self, command: Command) -> CommandResponse:
+    def _dispatch(self, command: Command, *, platform: str, user_id: str) -> CommandResponse:
+        if command.name == "resolve-finding":
+            return self._resolve_finding(command.name, command.args, platform=platform, user_id=user_id)
         handlers = {
             "help": self._help,
             "devices": self._devices,
@@ -113,11 +119,12 @@ class CommandHandler:
             "events": self._events,
             "alert-history": self._alert_history,
             "findings": self._findings,
+            "finding": self._finding,
         }
         handler = handlers.get(command.name)
         if not handler:
             return CommandResponse("Unknown command. Use /help.", ok=False)
-        if command.args and command.name not in {"events", "alert-history", "findings"}:
+        if command.args and command.name not in {"events", "alert-history", "findings", "finding"}:
             return CommandResponse("This command does not accept arguments. Use /help.", ok=False, command=command.name)
         return handler(command.name, command.args)
 
@@ -332,7 +339,7 @@ class CommandHandler:
         if self.detection_repository is None or not isinstance(self.detection_scope, str) or not self.detection_scope.strip():
             return CommandResponse("Detection storage is unavailable.", ok=False, command=command_name)
         args = args or []
-        options = {"--limit": "5", "--status": "open"}
+        options = {"--limit": "5", "--status": "open", "--before": None}
         try:
             if len(args) % 2:
                 raise ValueError("option requires a value")
@@ -347,16 +354,18 @@ class CommandHandler:
             status = options["--status"]
             if not 1 <= limit <= 5 or status not in {"open", "resolved", "all"}:
                 raise ValueError("unsupported finding filter")
+            before = FindingCursor.from_token(options["--before"]) if options["--before"] is not None else None
         except ValueError:
-            return CommandResponse("Use /findings [--limit 1-5] [--status open|resolved|all].",
+            return CommandResponse("Use /findings [--limit 1-5] [--status open|resolved|all] [--before cursor].",
                                    ok=False, command=command_name)
         try:
             findings = self.detection_repository.query(
-                network_scope=self.detection_scope, status=None if status == "all" else status, limit=limit,
+                network_scope=self.detection_scope, status=None if status == "all" else status, before=before, limit=limit + 1,
             )
+            next_cursor = FindingCursor.from_finding(findings[limit - 1]).to_token() if len(findings) > limit else None
             items = []
             lines = ["Sentinel Findings", ""]
-            for finding in findings:
+            for finding in findings[:limit]:
                 state = self.detection_repository.get_state(finding.finding_id)
                 if state is None:
                     raise ValueError("finding state is unavailable")
@@ -369,8 +378,96 @@ class CommandHandler:
                               item["message"], f"{item['timestamp']} ({item['evidence_count']} evidence records)", ""])
             if not items:
                 lines.append("No matching findings.")
+            if next_cursor:
+                lines.extend(["Next page", f"/findings --limit {limit} --status {status} --before {next_cursor}"])
             return CommandResponse("\n".join(lines).rstrip(), command=command_name,
-                                   data={"findings": items, "limit": limit, "status": status})
+                                   data={"findings": items, "limit": limit, "status": status, "next_cursor": next_cursor})
         except Exception as exc:
             logger.error("Detection query failed: error=%s", type(exc).__name__)
             return CommandResponse("Sentinel could not read detection findings.", ok=False, command=command_name)
+
+    def _resolve_finding(self, command_name, args, *, platform, user_id):
+        if self.detection_repository is None or not isinstance(self.detection_scope, str) or not self.detection_scope.strip():
+            return CommandResponse("Detection storage is unavailable.", ok=False, command=command_name)
+        usage = "Use /resolve-finding <finding-id> <reason>. A single-line reason of 1-500 characters is required."
+        if len(args) < 2 or re.fullmatch(r"detection:v1:[0-9a-f]{64}", args[0]) is None:
+            return CommandResponse(usage, ok=False, command=command_name)
+        try:
+            state = self.detection_repository.resolve_audited(
+                args[0], network_scope=self.detection_scope, actor_platform=platform, actor_id=user_id,
+                reason=" ".join(args[1:]), resolved_at=datetime.now(timezone.utc),
+            )
+            if state is None:
+                return CommandResponse("Finding was not found.", ok=False, command=command_name)
+            return CommandResponse(
+                f"Finding resolved\n{state.finding_id}\nResolved {state.resolved_at.isoformat()}",
+                command=command_name, data={"finding_id": state.finding_id, "status": state.status.value,
+                                            "resolved_at": state.resolved_at.isoformat()},
+            )
+        except ValueError:
+            return CommandResponse(usage + " Resolution cannot predate the evidence.", ok=False, command=command_name)
+        except Exception as exc:
+            logger.error("Finding resolution failed: error=%s", type(exc).__name__)
+            return CommandResponse("Sentinel could not resolve this finding.", ok=False, command=command_name)
+
+    def _finding(self, command_name="finding", args=None):
+        if self.detection_repository is None or not isinstance(self.detection_scope, str) or not self.detection_scope.strip():
+            return CommandResponse("Detection storage is unavailable.", ok=False, command=command_name)
+        args = args or []
+        if len(args) != 1 or re.fullmatch(r"detection:v1:[0-9a-f]{64}", args[0]) is None:
+            return CommandResponse("Use /finding <finding-id> from /findings.", ok=False, command=command_name)
+        try:
+            finding = self.detection_repository.get(args[0], network_scope=self.detection_scope)
+            if finding is None:
+                return CommandResponse("Finding was not found.", ok=False, command=command_name)
+            state = self.detection_repository.get_state(finding.finding_id)
+            if state is None:
+                raise ValueError("finding state is unavailable")
+            evidence = []
+            for event_id, event in self.detection_repository.list_evidence(
+                finding.finding_id, network_scope=self.detection_scope, limit=3,
+            ):
+                reference = event_id if len(event_id) <= 128 else "[Long evidence reference omitted]"
+                evidence.append({"event_id": reference, "available": event is not None,
+                                 "event_type": event.event_type.value if event else None,
+                                 "timestamp": event.timestamp.isoformat() if event else None,
+                                 "ip": event.subject.ip_address if event and event.subject else None})
+            references = [item["event_id"] for item in evidence]
+            item = {
+                "finding_id": finding.finding_id, "rule_id": finding.rule_id[:32],
+                "rule_version": finding.rule_version, "severity": finding.severity.value,
+                "status": state.status.value, "message": finding.message[:240],
+                "asset_id": (finding.asset_id or "Unassociated")[:80],
+                "source": finding.source[:80], "collector": (finding.collector or "Unspecified")[:80],
+                "first_seen": finding.first_seen.isoformat(), "last_seen": finding.last_seen.isoformat(),
+                "resolved_at": state.resolved_at.isoformat() if state.resolved_at else None,
+                "event_ids": references, "evidence_count": len(finding.event_ids),
+                "threshold": finding.threshold, "window_seconds": finding.window_seconds,
+                "evidence": evidence,
+            }
+            lines = ["Sentinel Finding", "", item["finding_id"],
+                     f"{item['rule_id']} v{item['rule_version']} [{item['severity']}] {item['status']}",
+                     item["message"], f"Asset {item['asset_id']}",
+                     f"Source {item['source']} / collector {item['collector']}",
+                     f"Evidence time {item['first_seen']} to {item['last_seen']}"]
+            if item["resolved_at"]:
+                lines.append(f"Resolved {item['resolved_at']}")
+                resolution = self.detection_repository.get_resolution(finding.finding_id, network_scope=self.detection_scope)
+                if resolution is not None:
+                    item["resolution"] = {"actor_platform": resolution.actor_platform,
+                                          "actor_id": resolution.actor_id, "reason": resolution.reason}
+                    lines.extend([f"Operator {resolution.actor_platform} / {resolution.actor_id}",
+                                  f"Reason {resolution.reason}"])
+            if item["window_seconds"] is not None:
+                lines.append(f"Threshold {item['threshold']} in {item['window_seconds']} seconds")
+            lines.append(f"Evidence references ({len(references)} of {item['evidence_count']})")
+            for record in evidence:
+                lines.append(record["event_id"])
+                if record["available"]:
+                    lines.append(f"Current event {record['event_type']} {record['timestamp']} {record['ip'] or ''}".rstrip())
+                else:
+                    lines.append("Event details unavailable")
+            return CommandResponse("\n".join(lines), command=command_name, data={"finding": item})
+        except Exception as exc:
+            logger.error("Finding detail query failed: error=%s", type(exc).__name__)
+            return CommandResponse("Sentinel could not read this finding.", ok=False, command=command_name)

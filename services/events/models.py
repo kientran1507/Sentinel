@@ -22,6 +22,12 @@ class SecurityEventType(str, Enum):
     DHCP_OBSERVATION = "network.dhcp_observation"
     HOSTNAME_OBSERVATION = "network.hostname_observation"
     MESH_OBSERVATION = "network.mesh_observation"
+    CONNECTION_OBSERVATION = "network.connection_observation"
+    AUTHENTICATION_FAILURE = "authentication.failure"
+    AUTHENTICATION_SUCCESS = "authentication.success"
+    INTERFACE_COUNTERS = "host.interface_counters"
+    FIREWALL_COUNTERS = "host.firewall_counters"
+    ACCESS_DENIED = "network.access_denied"
     COLLECTOR_STARTED = "collector.started"
     COLLECTOR_STOPPED = "collector.stopped"
     COLLECTOR_ERROR = "collector.error"
@@ -135,6 +141,38 @@ class SecurityEvent:
         if not isinstance(self.metadata, Mapping):
             raise ValueError("metadata must be an object")
         object.__setattr__(self, "metadata", _freeze_json(self.metadata))
+        if self.event_type in {
+            SecurityEventType.CONNECTION_OBSERVATION, SecurityEventType.AUTHENTICATION_FAILURE, SecurityEventType.AUTHENTICATION_SUCCESS,
+            SecurityEventType.ACCESS_DENIED,
+        }:
+            if self.collector is None or self.source_endpoint is None or self.destination_endpoint is None:
+                raise ValueError("activity evidence requires collector and source/destination endpoints")
+            if self.event_type in {SecurityEventType.AUTHENTICATION_FAILURE, SecurityEventType.AUTHENTICATION_SUCCESS}:
+                for name in ("service", "account"):
+                    _text(self.metadata.get(name), name)
+            else:
+                if self.metadata.get("transport") not in ("tcp", "udp") or self.destination_endpoint.port is None:
+                    raise ValueError("traffic evidence requires tcp/udp transport and a destination port")
+            if self.event_type == SecurityEventType.ACCESS_DENIED:
+                _text(self.metadata.get("policy_id"), "policy_id")
+        if self.event_type in {SecurityEventType.INTERFACE_COUNTERS, SecurityEventType.FIREWALL_COUNTERS}:
+            if self.collector is None:
+                raise ValueError("host counters require an explicit collector")
+            if self.event_type == SecurityEventType.INTERFACE_COUNTERS:
+                _text(self.metadata.get("interface"), "interface")
+                counters = self.metadata.get("counters")
+                if not isinstance(counters, Mapping):
+                    raise ValueError("interface counters must be an object")
+                values = []
+                for direction in ("rx", "tx"):
+                    if not isinstance(counters.get(direction), Mapping):
+                        raise ValueError("interface counters require rx and tx objects")
+                    values.extend(counters[direction].get(key) for key in ("bytes", "packets", "errors", "dropped"))
+            else:
+                _text(self.metadata.get("counter_id"), "counter_id")
+                values = [self.metadata.get(key) for key in ("packets", "bytes")]
+            if any(type(value) is not int or value < 0 for value in values):
+                raise ValueError("host counters must be nonnegative integers")
 
     def to_dict(self) -> dict[str, Any]:
         return {

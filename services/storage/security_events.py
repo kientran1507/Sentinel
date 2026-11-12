@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from services.events import EventSeverity, SecurityEvent, SecurityEventType
+from services.events import EventSeverity, NetworkEndpoint, SecurityEvent, SecurityEventType
 
 from .base import Storage, StorageError
 
@@ -91,6 +91,14 @@ class SecurityEventRepository:
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
         before: Optional[SecurityEventCursor] = None,
+        source_ip: str | None = None,
+        destination_ip: str | None = None,
+        destination_port: int | None = None,
+        transport: str | None = None,
+        service: str | None = None,
+        account: str | None = None,
+        policy_id: str | None = None,
+        distinct_by: str | None = None,
     ) -> list[SecurityEvent]:
         if type(limit) is not int or not 1 <= limit <= MAX_SECURITY_EVENT_LIMIT:
             raise ValueError(f"limit must be an integer from 1 to {MAX_SECURITY_EVENT_LIMIT}")
@@ -100,6 +108,23 @@ class SecurityEventRepository:
             raise ValueError("start must not be later than end")
         clauses = []
         parameters: list[Any] = []
+        paths = {"source_ip": "source_endpoint.ip_address", "destination_ip": "destination_endpoint.ip_address",
+                 "destination_port": "destination_endpoint.port", "transport": "metadata.transport",
+                 "service": "metadata.service", "account": "metadata.account", "policy_id": "metadata.policy_id"}
+        for name, value in (("source_ip", source_ip), ("destination_ip", destination_ip),
+                            ("destination_port", destination_port), ("transport", transport),
+                            ("service", service), ("account", account), ("policy_id", policy_id)):
+            if value is not None:
+                if name in {"source_ip", "destination_ip"}:
+                    value = NetworkEndpoint(value).ip_address
+                elif name == "destination_port":
+                    if type(value) is not int or not 0 <= value <= 65535:
+                        raise ValueError("destination_port must be an integer from 0 to 65535")
+                else:
+                    _required_text(value, name)
+                expression = self.storage.json_text_expression("payload", paths[name])
+                clauses.append(f"CAST({expression} AS TEXT) = ?")
+                parameters.append(str(value))
         for name, value in (("asset_id", asset_id), ("network_scope", network_scope),
                             ("source", source), ("collector", collector)):
             if value is not None:
@@ -125,10 +150,22 @@ class SecurityEventRepository:
                 raise ValueError("before must be a SecurityEventCursor")
             clauses.append("(timestamp < ? OR (timestamp = ? AND event_id < ?))")
             parameters.extend((_timestamp(before.timestamp), _timestamp(before.timestamp), before.event_id))
+        if distinct_by is not None:
+            if not isinstance(distinct_by, str) or distinct_by not in {"source_ip", "destination_ip", "destination_port"}:
+                raise ValueError("unsupported distinct_by field")
+            expression = self.storage.json_text_expression("payload", paths[distinct_by])
+            clauses.append(f"{expression} IS NOT NULL")
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        selection = "SELECT payload, timestamp, event_id FROM security_events" + where
+        if distinct_by is not None:
+            selection = (
+                "SELECT payload, timestamp, event_id FROM (SELECT payload, timestamp, event_id, "
+                f"ROW_NUMBER() OVER (PARTITION BY {expression} ORDER BY timestamp DESC, event_id DESC) AS position "
+                "FROM security_events" + where + ") AS grouped WHERE position = 1"
+            )
         with self.storage.transaction() as connection:
             rows = connection.execute(
-                "SELECT payload FROM security_events" + where + " ORDER BY timestamp DESC, event_id DESC LIMIT ?",
+                selection + " ORDER BY timestamp DESC, event_id DESC LIMIT ?",
                 tuple(parameters) + (limit,),
             ).fetchall()
             return [self._from_row(row) for row in rows]

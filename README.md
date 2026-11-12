@@ -4,7 +4,7 @@ Sentinel discovers LAN devices, monitors ZTE H3601P client presence, records inv
 
 Milestones 1 and 2 have completed implementation acceptance: durable inventory and address history, canonical source/transition events, ZTE collector health, explicit retention, and structured JSON logs/redaction. See the [inventory acceptance](docs/development/milestone-1-acceptance.md), [event-pipeline acceptance](docs/development/milestone-2-acceptance.md), and [deployment limits](docs/PROJECT_STATUS.md). No automatic cleanup is enabled; website work remains deferred.
 
-Milestone 3 is in progress with versioned detection rules, durable findings/evidence, configurable collector-failure thresholds, discovery/trust checks, and explicit finding resolution. [Detection engine](docs/architecture/detection-engine.md)
+Milestone 3 implements all seven planned detection rules, durable findings/evidence, configurable thresholds, scoped canonical JSONL import, and audited finding resolution. Live activity-source and lab acceptance remain in progress. [Detection engine](docs/architecture/detection-engine.md)
 
 ## Setup
 

@@ -8,7 +8,7 @@ from services.alerting.engine import Alert
 from services.alerting.notifications import NotificationManager
 from services.discovery.models import DeviceEvent, DiscoveredDevice, ZTEDevice, ZTEObservation
 from services.discovery.collector_health import CollectorHealthEvent
-from services.detection import CollectorFailureRule, DetectionEngine, RuleRegistry, UnknownAssetRule
+from services.detection import DetectionEngine, RuleRegistry, default_rules
 from services.events import SecurityEvent, normalize_device_event, normalize_discovery_observation, normalize_router_observation, normalize_collector_health
 
 from .alerts import AlertRepository
@@ -39,7 +39,7 @@ class RuntimePersistence:
         self.security_events = SecurityEventRepository(storage)
         self.findings = DetectionRepository(storage)
         self.detection_engine = DetectionEngine(
-            RuleRegistry((UnknownAssetRule(), CollectorFailureRule()) if detection_rules is None else detection_rules),
+            RuleRegistry(default_rules() if detection_rules is None else detection_rules),
             assets=self.assets, events=self.security_events, findings=self.findings,
         )
         self.event_source = event_source
@@ -52,6 +52,14 @@ class RuntimePersistence:
                 self.assets.record_observation(device)
             except Exception as exc:
                 logger.error("Failed to persist device: error=%s", type(exc).__name__)
+
+    def ingest_security_event(self, event: SecurityEvent) -> SecurityEvent:
+        """Accept explicit scoped evidence. Import callers own ingestion errors."""
+        if not isinstance(event, SecurityEvent) or event.network_scope != self.assets.network_scope:
+            raise ValueError("ingested event must match the configured scope")
+        saved = self.security_events.save(event)
+        self._detect(saved)
+        return saved
 
     def persist_event(self, event: DeviceEvent) -> None:
         try:
@@ -100,8 +108,11 @@ class RuntimePersistence:
                        "error_type": type(exc).__name__},
             )
             return
+        self._detect(saved)
+
+    def _detect(self, event: SecurityEvent) -> None:
         try:
-            self.detection_engine.process(saved)
+            self.detection_engine.process(event)
         except Exception as exc:
             logger.error("Detection dispatch failed: error=%s", type(exc).__name__)
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .base import StorageInitializationError
+
 
 @dataclass(frozen=True)
 class Migration:
@@ -65,6 +67,16 @@ DETECTION_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_detections_rule_time ON detection_findings (rule_id, last_seen, finding_id)",
     "CREATE INDEX IF NOT EXISTS idx_detections_status_time ON detection_findings (status, last_seen, finding_id)",
     "CREATE INDEX IF NOT EXISTS idx_detection_evidence_event ON detection_evidence (event_id, finding_id)",
+)
+
+
+DETECTION_AUDIT_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS detection_resolutions (
+        finding_id TEXT PRIMARY KEY,
+        actor_platform TEXT NOT NULL CHECK (actor_platform IN ('discord', 'telegram')),
+        actor_id TEXT NOT NULL, reason TEXT NOT NULL, resolved_at TEXT NOT NULL,
+        FOREIGN KEY (finding_id) REFERENCES detection_findings(finding_id) ON DELETE CASCADE
+    )""",
 )
 
 
@@ -132,6 +144,7 @@ MIGRATIONS = (
     Migration(2, "preserve address assignment intervals", ADDRESS_HISTORY_STATEMENTS),
     Migration(3, "canonical security events", SECURITY_EVENT_STATEMENTS),
     Migration(4, "canonical detection findings", DETECTION_STATEMENTS),
+    Migration(5, "audited finding resolution", DETECTION_AUDIT_STATEMENTS),
 )
 
 
@@ -140,6 +153,11 @@ def apply_migrations(connection) -> None:
     connection.execute("CREATE TABLE IF NOT EXISTS storage_metadata (id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL)")
     row = connection.execute("SELECT schema_version FROM storage_metadata WHERE id = 1").fetchone()
     current = int((row["schema_version"] if hasattr(row, "keys") else row[0]) if row else 0)
+    target = MIGRATIONS[-1].version
+    if current > target:
+        raise StorageInitializationError(
+            f"PostgreSQL schema version {current} exceeds supported version {target}. Update Sentinel before connecting."
+        )
     for migration in MIGRATIONS:
         if migration.version <= current:
             continue

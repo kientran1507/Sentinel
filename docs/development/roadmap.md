@@ -16,9 +16,15 @@ The [acceptance matrix](milestone-2-acceptance.md) records completed implementat
 
 ## Milestone 3 In Progress
 
-The [detection engine](../architecture/detection-engine.md) now provides versioned rules, a registry, durable findings/evidence links, configurable thresholds and fixed windows, concurrent deduplication, and explicit resolution. The [rule catalog](../monitoring/detection-rules.md) covers implemented ASSET-001 discovery/trust checks and OPS-001 collector failures.
+The [detection engine](../architecture/detection-engine.md) provides all seven planned rules, a registry, durable findings/evidence links, configurable thresholds and fixed windows, concurrent deduplication, and audited resolution. The [rule catalog](../monitoring/detection-rules.md) records exact grouping, thresholds, false positives, and validation.
 
-Authorized operators can inspect scoped results with `/findings`. Next are startup/standalone-discovery coverage, finding delivery policy, and audited state-change decisions. Scan/authentication/restricted-access rule families require their planned telemetry ingestion and controlled validation. Milestone 3 remains in progress under those explicit dependencies.
+Authorized operators inspect scoped results with `/findings` and `/finding`, and resolve them with an audited reason. ASSET-001 v2 includes startup DHCP/mesh and opt-in ARP/ICMP findings. Command review accompanies existing legacy alert delivery. Scan/authentication/restricted-access rules now accept explicit canonical imports and pass controlled synthetic validation. Milestone 3 remains in progress for live adapters, approved gateway policy attribution, labelled lab scenarios, and false-positive tuning. [Activity ingestion](../architecture/activity-evidence.md)
+
+Both startup commands now expose bounded OPS-001 failure-count and window options. The [acceptance matrix](milestone-3-acceptance.md) records implemented coverage and the remaining completion gates.
+
+Read-only SSH journald and host counter adapters now provide one-shot canonical export/import, unavailable-source reporting, and protected-file input for least-privilege deployment. Host history has explicit source/collector/scoped retention with a configurable 30-day preview. Pi permissions, scheduling, real traffic/denial sources, and live acceptance remain deployment work. [Host telemetry](../monitoring/host-telemetry.md)
+
+An explicitly invoked `host-watch` command now supplies periodic preview/apply collection, bounded process-local buffering, database recovery, and graceful service shutdown. Process exit loses pending buffer contents, and capacity drops are reported. Owner-managed service deployment and live Pi validation remain acceptance gates.
 
 Before production reliance, separately validate backup/restore, upgrades with stopped writers, platform delivery, timeout behavior during real network partitions, retention, and deployment hardening. Durable retry queues and cross-backend import require explicit scope; neither is implicit fallback behavior.
 

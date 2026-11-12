@@ -1,6 +1,9 @@
 """Immutable detection evidence independent of notification delivery."""
 import hashlib
 import json
+import base64
+import binascii
+import re
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from enum import Enum
@@ -25,6 +28,41 @@ class FindingStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class FindingCursor:
+    last_seen: datetime
+    finding_id: str
+
+    def __post_init__(self):
+        object.__setattr__(self, "last_seen", aware_utc(self.last_seen, "cursor last_seen"))
+        if not isinstance(self.finding_id, str) or re.fullmatch(r"detection:v1:[0-9a-f]{64}", self.finding_id) is None:
+            raise ValueError("cursor requires a version-1 finding ID")
+
+    @classmethod
+    def from_finding(cls, finding):
+        return cls(finding.last_seen, finding.finding_id)
+
+    def to_token(self):
+        payload = {"version": 1, "last_seen": self.last_seen.isoformat(timespec="microseconds"),
+                   "finding_id": self.finding_id}
+        return base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
+
+    @classmethod
+    def from_token(cls, token):
+        try:
+            if not isinstance(token, str) or not 1 <= len(token) <= 512:
+                raise ValueError("invalid token length")
+            raw = base64.b64decode((token + "=" * (-len(token) % 4)).encode("ascii"), altchars=b"-_", validate=True)
+            payload = json.loads(raw.decode("utf-8"))
+            if not isinstance(payload, dict) or set(payload) != {"version", "last_seen", "finding_id"}:
+                raise ValueError("unexpected cursor fields")
+            if type(payload["version"]) is not int or payload["version"] != 1 or not isinstance(payload["last_seen"], str):
+                raise ValueError("unsupported cursor version or time")
+            return cls(datetime.fromisoformat(payload["last_seen"]), payload["finding_id"])
+        except (ValueError, TypeError, UnicodeError, binascii.Error, OverflowError) as exc:
+            raise ValueError("invalid finding cursor") from exc
+
+
+@dataclass(frozen=True)
 class FindingState:
     finding_id: str
     status: FindingStatus = FindingStatus.OPEN
@@ -37,6 +75,28 @@ class FindingState:
             object.__setattr__(self, "resolved_at", aware_utc(self.resolved_at, "resolved_at"))
         elif self.resolved_at is not None:
             raise ValueError("open findings cannot have a resolution time")
+
+
+@dataclass(frozen=True)
+class FindingResolution:
+    finding_id: str
+    actor_platform: str
+    actor_id: str
+    reason: str
+    resolved_at: datetime
+
+    def __post_init__(self):
+        required_text(self.finding_id, "finding_id")
+        if not isinstance(self.actor_platform, str) or self.actor_platform not in {"discord", "telegram"}:
+            raise ValueError("resolution requires a supported operator platform")
+        if not isinstance(self.actor_id, str) or not self.actor_id.isascii() or not self.actor_id.isdigit() or len(self.actor_id) > 64:
+            raise ValueError("resolution requires a numeric operator ID of at most 64 digits")
+        required_text(self.reason, "reason")
+        reason = self.reason.strip()
+        if len(reason) > 500 or not reason.isprintable():
+            raise ValueError("resolution reason must be a single printable line of 1 through 500 characters")
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "resolved_at", aware_utc(self.resolved_at, "resolved_at"))
 
 
 @dataclass(frozen=True)

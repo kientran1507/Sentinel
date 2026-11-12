@@ -8,10 +8,11 @@ from typing import Iterator, Optional, Union
 
 from .base import Storage, StorageError, StorageInitializationError, StorageNotInitializedError
 from .config import get_database_path
-from .migrations import ADDRESS_HISTORY_STATEMENTS, SECURITY_EVENT_STATEMENTS, DETECTION_STATEMENTS
+from .migrations import ADDRESS_HISTORY_STATEMENTS, SECURITY_EVENT_STATEMENTS, DETECTION_STATEMENTS, DETECTION_AUDIT_STATEMENTS
 
 
 PathLike = Union[str, Path]
+SCHEMA_VERSION = 9
 
 
 class SQLiteStorage(Storage):
@@ -55,6 +56,11 @@ class SQLiteStorage(Storage):
                     )
                     """
                 )
+                version = connection.execute("SELECT schema_version FROM storage_metadata WHERE id = 1").fetchone()
+                if version is not None and version[0] > SCHEMA_VERSION:
+                    raise StorageInitializationError(
+                        f"SQLite schema version {version[0]} exceeds supported version {SCHEMA_VERSION}. Update Sentinel before connecting."
+                    )
                 connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS devices (
@@ -195,7 +201,6 @@ class SQLiteStorage(Storage):
                     "CREATE INDEX IF NOT EXISTS idx_alerts_severity_type "
                     "ON alerts (severity, alert_type, timestamp, alert_id)"
                 )
-                version = connection.execute("SELECT schema_version FROM storage_metadata WHERE id = 1").fetchone()
                 if version is None or version[0] < 6:
                     for statement in ADDRESS_HISTORY_STATEMENTS:
                         connection.execute(statement)
@@ -205,21 +210,28 @@ class SQLiteStorage(Storage):
                 if version is None or version[0] < 8:
                     for statement in DETECTION_STATEMENTS:
                         connection.execute(statement)
+                if version is None or version[0] < 9:
+                    for statement in DETECTION_AUDIT_STATEMENTS:
+                        connection.execute(statement)
                 connection.execute(
-                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, 8)"
+                    "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, ?)",
+                    (SCHEMA_VERSION,),
                 )
                 connection.execute(
-                    "UPDATE storage_metadata SET schema_version = 8 WHERE id = 1 AND schema_version < 8"
+                    "UPDATE storage_metadata SET schema_version = ? WHERE id = 1 AND schema_version < ?",
+                    (SCHEMA_VERSION, SCHEMA_VERSION),
                 )
                 connection.commit()
                 self._connection = connection
-            except (OSError, sqlite3.Error) as exc:
+            except (OSError, sqlite3.Error, StorageInitializationError) as exc:
                 if connection is not None:
                     try:
                         connection.close()
                     except sqlite3.Error:
                         pass
                 self._connection = None
+                if isinstance(exc, StorageInitializationError):
+                    raise
                 raise StorageInitializationError(
                     f"could not initialize SQLite storage at {self.database_path}"
                 ) from exc

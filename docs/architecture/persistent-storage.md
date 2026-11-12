@@ -20,7 +20,7 @@ Each storage instance owns one connection and a lock that serializes transaction
 
 PostgreSQL inventory transactions additionally lock the asset and address tables before identity lookup to serialize independent writers. Ordinary reads remain available. An existing nonzero lock timeout is honored; otherwise a transaction-local five-second timeout bounds contention waits. A timeout rolls back the operation without automatic retry. This favors correctness over write throughput for the current low-volume monitor; see [concurrency details](asset-identity.md#concurrent-postgresql-writers).
 
-SQLite initializes tables and additive column checks in a transaction and records schema version 8. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL currently applies migration 4 through the existing versioned migration path. The backend version numbers track separate histories. [Migrations](../../services/storage/migrations.py)
+SQLite initializes tables and additive column checks in a transaction and records schema version 9. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL currently applies migration 5 through the existing versioned migration path. The backend version numbers track separate histories. [Migrations](../../services/storage/migrations.py)
 
 The interval upgrade seeds one assignment row from each existing address summary without changing asset IDs or deleting evidence. Initialization applies upgrades atomically; failures preserve the previous schema/version. Take a verified backup before deployment and stop old writers while upgrading; mixed-version writers are not supported. This development task validated upgrades only in disposable databases and did not migrate local/runtime data. Historical intervals already collapsed by older code cannot be reconstructed. Legacy replay keys remain stored; the first version-2 replay may add one evidence row.
 
@@ -53,6 +53,8 @@ The event callback attempts both legacy and canonical history writes, then the m
 
 After a successful canonical save, detection evaluates the stored event and independently attempts transactional finding/evidence persistence. First-match identity coalesces concurrent writers and replays. Explicit resolution updates lifecycle columns while retaining the original payload. Canonical retention and inventory deletion preserve finding evidence IDs as soft links. PostgreSQL migration 4 / SQLite schema 8 create the finding tables and indexes. [Detection persistence](detection-engine.md#persistence-and-queries)
 
+PostgreSQL migration 5 / SQLite schema 9 add operator resolution audits. Scoped resolution writes lifecycle state and the authenticated actor, reason, and timestamp in one transaction. Concurrent requests retain the first committed audit. Existing internal resolutions retain their historical attribution limits. Audits remain linked to their finding independently of canonical evidence retention.
+
 The opt-in discovery sink additionally writes canonical sightings and actual hostname-resolution evidence after attempting inventory persistence. It uses deterministic observation IDs, not a new-asset classification, and never invokes the alert bus. Source batches and each resulting canonical record have independent best-effort writes. See [discovery evidence](security-events.md#discovery-evidence).
 
 Write failures after startup are logged and isolated from monitoring and notifications. Writes are synchronous and may delay a poll; no persistent queue, automatic retry, or delivery receipt ledger exists.
@@ -62,6 +64,8 @@ Each `AssetRepository.record_observation()` call uses one transaction for reconc
 Remote `/devices` uses durable assets when nonempty, with a live MAC overlay. A failed inventory list or address read discards the partial inventory response and falls back to the registry; empty inventory does the same. Failed vendor enrichment does not block the live response. Live-only devices are not unioned into a nonempty persisted list. `/status` and `/alerts` read live state; historical commands use `HistoryService`. Startup does not hydrate the registry, presence counters, or live alert buffer.
 
 ## Limits and Operations
+
+Initialization rejects a stored schema version newer than the code's supported version. PostgreSQL currently targets version 5 and SQLite targets version 9. The check releases the attempted connection and preserves the database version and contents. Deploy matching or newer Sentinel code before reconnecting to an upgraded database. Repeated initialization attempts continue to fail until the versions are compatible.
 
 See [identity and observations](asset-identity.md) for global MAC policy, preserved intervals, freshness, and replay rules. Shared acceptance tests run against SQLite and PostgreSQL; PostgreSQL has forced independent-writer overlap coverage and SQLite has independent-connection replay coverage.
 

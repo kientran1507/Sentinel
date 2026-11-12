@@ -60,7 +60,7 @@ Status: implementation acceptance complete on 2026-11-04; see the [acceptance ma
 
 Candidate types include `asset.discovered`, `asset.updated`, `asset.online`, `asset.offline`, `asset.recovered`, `network.dhcp_observation`, `network.hostname_observation`, `network.mesh_observation`, and collector lifecycle/error events.
 
-Accepted limits: canonical ingestion and logs are best effort without durable replay queues; health is process-local plus historical lifecycle reports. Retention requires explicit maintenance and deployment policy; log rotation, external exporters, backup/restore, and live delivery drills remain operational/later-milestone work. The next roadmap task is Milestone 3 detection design.
+Canonical ingestion and logs are best effort without durable replay queues. Health is process-local plus historical lifecycle reports. Retention requires explicit maintenance and deployment policy. Log rotation, external exporters, backup/restore, and live delivery drills remain operational/later-milestone work. Milestone 3 detection implementation is underway.
 
 ## Milestone 3: Detection Engine
 
@@ -69,19 +69,26 @@ Build rule interfaces, a registry, configurable thresholds/time windows, dedupli
 Status is in progress from 2026-11-09. The [detection engine](docs/architecture/detection-engine.md) evaluates persisted canonical events and records durable findings. The [rule catalog](docs/monitoring/detection-rules.md) defines the implemented coverage and future telemetry requirements.
 
 - [x] Add versioned rule/finding contracts and a validated registry.
-- [x] Add ASSET-001 for associated presence-discovery events with current inventory trust checks.
+- [x] Add ASSET-001 v2 for associated discovery transitions and startup/ARP/ICMP/DHCP/mesh sightings with current inventory trust checks.
 - [x] Add OPS-001 for repeated collector failures with configurable fixed UTC windows and bounded threshold queries.
 - [x] Persist first-match findings, soft evidence links, scoped/policy deduplication, and explicit open-to-resolved state.
 - [x] Isolate evaluation failures and verify existing event/alert behavior on SQLite and PostgreSQL.
 - [x] Test migrations, rollback, concurrent writers/resolution, replay/restart, trust, and time boundaries.
 - [x] Document logic, required evidence, false positives, response, and validation scenarios.
-- [x] Expose scoped findings through existing allowlisted Discord/Telegram commands with bounded responses.
-- [ ] Review startup/standalone-discovery coverage, finding delivery policy, and audited operator state changes.
-- [ ] Implement and validate planned scan, authentication, and restricted-access rules as their telemetry becomes available.
+- [x] Expose scoped finding lists and detail inspection through existing allowlisted Discord/Telegram commands with bounded responses.
+- [x] Expose bounded collector-failure threshold/window configuration through both startup commands.
+- [x] Include startup/standalone-discovery findings with versioned replay/deduplication and preserved prior finding history.
+- [x] Use command-based finding review alongside existing notification delivery, and allow scoped resolution by existing allowlisted operators with a required reason and atomic audit.
+- [x] Implement NET-001/002/003 and AUTH-001/002 against explicit canonical evidence, with scoped import and controlled synthetic tests on both backends.
+- [x] Implement read-only SSH journald, interface statistics, and nftables/iptables counter adapters with unavailable/unconfigured reporting, protected export inputs, and scoped 30-day retention preview.
+- [x] Add opt-in periodic host watching with bounded process-local retries, partial-write recovery, source isolation, and graceful shutdown.
+- [ ] Validate live telemetry adapters, gateway policy attribution, labelled lab scenarios, and false-positive tuning for activity rules.
+
+The [Milestone 3 acceptance matrix](docs/development/milestone-3-acceptance.md) separates implemented requirements from completion gates. Initialization also rejects newer unsupported database schemas before application schema changes.
 
 | Rule | Purpose | Required evidence |
 | --- | --- | --- |
-| ASSET-001 | Unknown device | New asset without trusted identity |
+| ASSET-001 | Observed untrusted device | Associated sighting/discovery evidence and current inventory trust |
 | OPS-001 | Repeated collector failures | Canonical collector error history |
 | NET-001 | Network scan | Connection or scan telemetry |
 | NET-002 | Network sweep | Many destinations within a time window |

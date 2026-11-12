@@ -2,7 +2,8 @@
 import json
 from datetime import datetime
 
-from services.detection.models import DetectionFinding, FindingState, FindingStatus, aware_utc, required_text
+from services.detection.models import DetectionFinding, FindingCursor, FindingResolution, FindingState, FindingStatus, aware_utc, required_text
+from services.events import SecurityEvent
 from .base import StorageError
 
 
@@ -34,10 +35,16 @@ class DetectionRepository:
             stored = DetectionFinding.from_dict(json.loads(row["payload"]))
         return stored, inserted
 
-    def get(self, finding_id):
+    def get(self, finding_id, *, network_scope=None):
         required_text(finding_id, "finding_id")
+        query = "SELECT payload FROM detection_findings WHERE finding_id = ?"
+        parameters = (finding_id,)
+        if network_scope is not None:
+            required_text(network_scope, "network_scope")
+            query += " AND network_scope = ?"
+            parameters += (network_scope,)
         with self.storage.transaction() as connection:
-            row = connection.execute("SELECT payload FROM detection_findings WHERE finding_id = ?", (finding_id,)).fetchone()
+            row = connection.execute(query, parameters).fetchone()
         return DetectionFinding.from_dict(json.loads(row["payload"])) if row else None
 
     def get_state(self, finding_id):
@@ -47,6 +54,24 @@ class DetectionRepository:
                 "SELECT finding_id, status, resolved_at FROM detection_findings WHERE finding_id = ?", (finding_id,),
             ).fetchone()
         return self._state(row) if row else None
+
+    def list_evidence(self, finding_id, *, network_scope, limit=50) -> list[tuple[str, SecurityEvent | None]]:
+        required_text(finding_id, "finding_id")
+        required_text(network_scope, "network_scope")
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("limit must be an integer from 1 to 500")
+        with self.storage.transaction() as connection:
+            rows = connection.execute(
+                "SELECT evidence.event_id, event.payload FROM detection_evidence AS evidence "
+                "JOIN detection_findings AS finding ON finding.finding_id = evidence.finding_id "
+                "LEFT JOIN security_events AS event ON event.event_id = evidence.event_id "
+                "AND event.network_scope = finding.network_scope "
+                "WHERE finding.finding_id = ? AND finding.network_scope = ? "
+                "ORDER BY evidence.event_id LIMIT ?",
+                (finding_id, network_scope, limit),
+            ).fetchall()
+        return [(row["event_id"], SecurityEvent.from_dict(json.loads(row["payload"]))
+                 if row["payload"] is not None else None) for row in rows]
 
     def resolve(self, finding_id, *, resolved_at):
         required_text(finding_id, "finding_id")
@@ -70,12 +95,55 @@ class DetectionRepository:
             state = self._state(row)
         return state
 
+    def resolve_audited(self, finding_id, *, network_scope, actor_platform, actor_id, reason, resolved_at):
+        required_text(network_scope, "network_scope")
+        resolution = FindingResolution(finding_id, actor_platform, actor_id, reason, resolved_at)
+        with self.storage.transaction() as connection:
+            row = connection.execute(
+                "SELECT last_seen FROM detection_findings WHERE finding_id = ? AND network_scope = ?",
+                (finding_id, network_scope),
+            ).fetchone()
+            if row is None:
+                return None
+            if resolution.resolved_at < datetime.fromisoformat(row["last_seen"]):
+                raise ValueError("resolution cannot predate the finding evidence")
+            cursor = connection.execute(
+                "UPDATE detection_findings SET status = 'resolved', resolved_at = ? "
+                "WHERE finding_id = ? AND network_scope = ? AND status = 'open'",
+                (resolution.resolved_at.isoformat(timespec="microseconds"), finding_id, network_scope),
+            )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    "INSERT INTO detection_resolutions (finding_id, actor_platform, actor_id, reason, resolved_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (finding_id, resolution.actor_platform, resolution.actor_id, resolution.reason,
+                     resolution.resolved_at.isoformat(timespec="microseconds")),
+                )
+            row = connection.execute(
+                "SELECT finding_id, status, resolved_at FROM detection_findings WHERE finding_id = ? AND network_scope = ?",
+                (finding_id, network_scope),
+            ).fetchone()
+            return self._state(row)
+
+    def get_resolution(self, finding_id, *, network_scope):
+        required_text(finding_id, "finding_id")
+        required_text(network_scope, "network_scope")
+        with self.storage.transaction() as connection:
+            row = connection.execute(
+                "SELECT audit.* FROM detection_resolutions AS audit "
+                "JOIN detection_findings AS finding ON finding.finding_id = audit.finding_id "
+                "WHERE audit.finding_id = ? AND finding.network_scope = ?",
+                (finding_id, network_scope),
+            ).fetchone()
+        return FindingResolution(row["finding_id"], row["actor_platform"], row["actor_id"], row["reason"],
+                                 datetime.fromisoformat(row["resolved_at"])) if row else None
+
     @staticmethod
     def _state(row):
         return FindingState(row["finding_id"], row["status"],
                             datetime.fromisoformat(row["resolved_at"]) if row["resolved_at"] else None)
 
-    def query(self, *, network_scope=None, rule_id=None, asset_id=None, event_id=None, status=None, limit=50):
+    def query(self, *, network_scope=None, rule_id=None, asset_id=None, event_id=None, status=None, before=None, limit=50):
         if type(limit) is not int or not 1 <= limit <= 500:
             raise ValueError("limit must be an integer from 1 to 500")
         clauses, parameters = [], []
@@ -91,6 +159,12 @@ class DetectionRepository:
         if status is not None:
             clauses.append("status = ?")
             parameters.append(FindingStatus(status).value)
+        if before is not None:
+            if not isinstance(before, FindingCursor):
+                raise ValueError("before must be a FindingCursor")
+            timestamp = before.last_seen.isoformat(timespec="microseconds")
+            clauses.append("(last_seen < ? OR (last_seen = ? AND finding_id < ?))")
+            parameters.extend((timestamp, timestamp, before.finding_id))
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.storage.transaction() as connection:
             rows = connection.execute(

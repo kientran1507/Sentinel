@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 from services.storage import (
@@ -53,7 +53,7 @@ class TestSQLiteStorage(unittest.TestCase):
                 row = connection.execute(
                     "SELECT schema_version FROM storage_metadata WHERE id = 1"
                 ).fetchone()
-            self.assertEqual(row[0], 8)
+            self.assertEqual(row[0], 9)
             self.assertIsNotNone(
                 connection.execute(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'devices'"
@@ -81,6 +81,28 @@ class TestSQLiteStorage(unittest.TestCase):
             storage.close()
 
             self.assertFalse(storage.is_initialized)
+
+    def test_newer_schema_is_rejected_without_changing_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "future.db"
+            with closing(sqlite3.connect(path)) as connection:
+                with connection:
+                    connection.execute("CREATE TABLE storage_metadata (id INTEGER PRIMARY KEY, schema_version INTEGER NOT NULL)")
+                    connection.execute("INSERT INTO storage_metadata VALUES (1, 10)")
+            before = path.read_bytes()
+            storage = SQLiteStorage(path)
+
+            for _ in range(2):
+                with self.assertRaisesRegex(StorageInitializationError, "schema version 10 exceeds supported version 9"):
+                    storage.initialize()
+                self.assertFalse(storage.is_initialized)
+                self.assertEqual(path.read_bytes(), before)
+
+            with closing(sqlite3.connect(path)) as connection:
+                with connection:
+                    connection.execute("UPDATE storage_metadata SET schema_version = 0")
+            storage.initialize()
+            storage.close()
 
     def test_transaction_rolls_back_on_error(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -14,6 +14,7 @@ from services.alerting.engine import AlertEngine, AlertType, Severity
 from services.alerting.notifications import NotificationManager, NotificationProvider
 from services.discovery.event_bus import EventBus
 from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
+from services.detection import CollectorFailureRule, default_rules
 from services.storage import (
     AlertRepository,
     DeviceEventRepository,
@@ -62,17 +63,24 @@ class TestRuntimePersistence(unittest.TestCase):
                 "ZTE_ROUTER_URL": "http://router.local",
                 "ZTE_USERNAME": "admin",
                 "ZTE_PASSWORD": "password",
+                "SENTINEL_STORAGE_BACKEND": "sqlite",
                 "SENTINEL_DATABASE_PATH": path,
             }
             with patch.dict(os.environ, environment, clear=False):
-                runtime = create_runtime()
-                self.assertTrue(runtime.storage.is_initialized)
-                self.assertEqual(runtime.monitor.on_health.__name__, "persist_collector_health")
-                self.assertIs(runtime.monitor.on_health.__self__.storage, runtime.storage)
-                self.assertIs(runtime.command_service.handler.detection_repository.storage, runtime.storage)
-                self.assertTrue(Path(path).is_file())
-                runtime.stop()
-                self.assertFalse(runtime.storage.is_initialized)
+                for policy in (None, CollectorFailureRule(threshold=5, window_seconds=60)):
+                    with self.subTest(policy=policy):
+                        runtime = create_runtime(collector_failure_rule=policy)
+                        try:
+                            self.assertTrue(runtime.storage.is_initialized)
+                            self.assertEqual(runtime.monitor.on_health.__name__, "persist_collector_health")
+                            self.assertIs(runtime.monitor.on_health.__self__.storage, runtime.storage)
+                            self.assertIs(runtime.command_service.handler.detection_repository.storage, runtime.storage)
+                            self.assertEqual(runtime.monitor.on_health.__self__.detection_engine.registry.rules,
+                                             default_rules(collector_failure_rule=policy))
+                            self.assertTrue(Path(path).is_file())
+                        finally:
+                            runtime.stop()
+                        self.assertFalse(runtime.storage.is_initialized)
 
     def test_snapshot_event_and_alert_follow_existing_pipeline(self):
         with self.storage_context() as storage:

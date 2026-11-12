@@ -1,5 +1,6 @@
 """Detection contract exercised on disposable SQLite and PostgreSQL data."""
 import json
+import base64
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -10,12 +11,13 @@ from pathlib import Path
 from threading import Barrier
 from unittest.mock import Mock, patch
 
-from services.detection import CollectorFailureRule, DetectionFinding, FindingState, FindingStatus, RuleRegistry, UnknownAssetRule
+from services.detection import CollectorFailureRule, DetectionFinding, FindingCursor, FindingState, FindingStatus, RuleRegistry, UnknownAssetRule
 from services.discovery.collector_health import CollectorHealth, CollectorHealthEvent
 from services.discovery.models import DeviceEvent, DeviceEventType, DiscoveredDevice
 from services.events import EventSeverity, SecurityEvent, SecurityEventType
 from services.storage import AssetRepository, DetectionRepository, RuntimePersistence, SecurityEventRepository, SQLiteStorage
 from services.storage.base import StorageInitializationError
+from services.detection.models import FindingResolution
 
 
 NOW = datetime(2026, 11, 9, 0, 0, 1, tzinfo=timezone.utc)
@@ -30,6 +32,38 @@ def finding(**changes):
 
 
 class TestDetectionContract(unittest.TestCase):
+    def test_resolution_validates_operator_reason_and_timestamp(self):
+        values = dict(finding_id=finding().finding_id, actor_platform="telegram", actor_id="10",
+                      reason="  Reviewed by owner  ", resolved_at=NOW)
+        self.assertEqual(FindingResolution(**values).reason, "Reviewed by owner")
+        for changes in ({"actor_platform": "unknown"}, {"actor_id": "admin"}, {"actor_id": "１２"},
+                        {"actor_id": "1" * 65}, {"reason": " "}, {"reason": "a" * 501},
+                        {"reason": "line\nbreak"}, {"resolved_at": datetime(2026, 1, 1)}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                FindingResolution(**(values | changes))
+
+    def test_cursor_token_round_trip_normalizes_utc(self):
+        value = finding()
+        cursor = FindingCursor.from_finding(value)
+        self.assertEqual(FindingCursor.from_token(cursor.to_token()), cursor)
+        offset = FindingCursor(NOW.astimezone(timezone(timedelta(hours=7))), value.finding_id)
+        self.assertEqual(offset.to_token(), cursor.to_token())
+        self.assertLess(len(cursor.to_token()), 512)
+
+    def test_cursor_rejects_invalid_versions_fields_dates_and_ids(self):
+        valid = {"version": 1, "last_seen": NOW.isoformat(), "finding_id": finding().finding_id}
+        tokens = [None, "", "!", "a" * 513]
+        for changes in ({"version": True}, {"version": 2}, {"unknown": 1},
+                        {"last_seen": "2026-11-09"}, {"last_seen": None}, {"finding_id": "invalid"}):
+            tokens.append(base64.urlsafe_b64encode(json.dumps(valid | changes).encode()).decode())
+        for token in tokens:
+            with self.subTest(token=token), self.assertRaises(ValueError):
+                FindingCursor.from_token(token)
+        with self.assertRaises(ValueError):
+            FindingCursor(datetime(2026, 1, 1), finding().finding_id)
+        with self.assertRaises(ValueError):
+            FindingCursor(NOW, "invalid")
+
     def test_finding_json_round_trip_and_detached_evidence(self):
         ids = ["b", "a"]
         value = finding(event_ids=ids)
@@ -131,6 +165,80 @@ class DetectionRepositoryContract:
         self.assertEqual(self.detection_repository.query(event_id="' OR 1=1 --"), [])
         self.assertIsNone(self.detection_repository.get("missing"))
 
+    def test_detection_lookup_can_require_an_exact_scope(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        self.assertEqual(self.detection_repository.get(value.finding_id, network_scope="lab"), value)
+        self.assertIsNone(self.detection_repository.get(value.finding_id, network_scope="other"))
+        self.assertIsNone(self.detection_repository.get("missing", network_scope="lab"))
+        for scope in ("", " ", False):
+            with self.assertRaises(ValueError):
+                self.detection_repository.get(value.finding_id, network_scope=scope)
+
+    def test_detection_evidence_lookup_is_scoped_and_retains_missing_references(self):
+        event = SecurityEvent(SecurityEventType.ASSET_DISCOVERED, "presence_tracker", "Discovered", NOW,
+                              event_id="event-1", network_scope="lab", metadata={"private": "stored-evidence"})
+        SecurityEventRepository(self.storage).save(event)
+        value = finding(event_ids=("event-1", "missing-event"))
+        self.detection_repository.save_once(value)
+        self.assertEqual(self.detection_repository.list_evidence(value.finding_id, network_scope="lab"),
+                         [("event-1", event), ("missing-event", None)])
+        self.assertEqual(self.detection_repository.list_evidence(value.finding_id, network_scope="other"), [])
+        self.assertEqual(self.detection_repository.list_evidence("missing", network_scope="lab"), [])
+
+    def test_detection_evidence_retention_and_reused_ids_do_not_leak_scopes(self):
+        from services.storage import SecurityEventRetention
+
+        event = SecurityEvent(SecurityEventType.ASSET_DISCOVERED, "presence_tracker", "Discovered", NOW,
+                              event_id="event-1", network_scope="lab")
+        events = SecurityEventRepository(self.storage)
+        events.save(event)
+        value = finding()
+        self.detection_repository.save_once(value)
+        SecurityEventRetention(self.storage).prune_before(NOW + timedelta(seconds=1), network_scope="lab", dry_run=False)
+        self.assertEqual(self.detection_repository.list_evidence(value.finding_id, network_scope="lab"), [("event-1", None)])
+        events.save(replace(event, network_scope="private-other", message="private-other-evidence"))
+        self.assertEqual(self.detection_repository.list_evidence(value.finding_id, network_scope="lab"), [("event-1", None)])
+
+    def test_detection_evidence_queries_are_bounded_and_validate_inputs(self):
+        value = finding(event_ids=tuple(f"event-{index:03}" for index in range(51)))
+        self.detection_repository.save_once(value)
+        self.assertEqual(len(self.detection_repository.list_evidence(value.finding_id, network_scope="lab")), 50)
+        self.assertEqual(len(self.detection_repository.list_evidence(value.finding_id, network_scope="lab", limit=500)), 51)
+        for changes in ({"limit": 0}, {"limit": True}, {"limit": 501}, {"network_scope": ""}, {"finding_id": ""}):
+            options = {"finding_id": value.finding_id, "network_scope": "lab"} | changes
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.detection_repository.list_evidence(**options)
+
+    def test_detection_cursor_pages_handle_timestamp_ties_and_scope_filters(self):
+        for index in range(6):
+            self.detection_repository.save_once(finding(dedup_key=str(index)))
+        newer = finding(dedup_key="newer", last_seen=NOW + timedelta(microseconds=1))
+        self.detection_repository.save_once(newer)
+        self.detection_repository.save_once(finding(network_scope="other", dedup_key="other"))
+        expected = self.detection_repository.query(network_scope="lab", limit=500)
+        actual, cursor = [], None
+        for _ in range(5):
+            page = self.detection_repository.query(network_scope="lab", before=cursor, limit=2)
+            if not page:
+                break
+            actual.extend(page)
+            cursor = FindingCursor.from_finding(page[-1])
+        else:
+            self.fail("pagination did not terminate")
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual[0], newer)
+        self.assertEqual(len({item.finding_id for item in actual}), 7)
+
+    def test_detection_cursor_is_exclusive_and_invalid_cursor_is_rejected(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        cursor = FindingCursor.from_finding(value)
+        self.assertEqual(self.detection_repository.query(before=cursor), [])
+        for invalid in ("token", (NOW, value.finding_id), False):
+            with self.assertRaises(ValueError):
+                self.detection_repository.query(before=invalid)
+
     def test_detection_query_bounds_and_invalid_input(self):
         for index in range(51):
             self.detection_repository.save_once(finding(dedup_key=str(index)))
@@ -187,6 +295,91 @@ class DetectionRepositoryContract:
         with self.storage.transaction() as connection:
             connection.execute("DELETE FROM assets WHERE asset_id = ?", (asset.asset_id,))
         self.assertEqual(self.detection_repository.query(event_id=event.event_id), [value])
+
+    def audited_resolution(self, repository, value, **changes):
+        values = dict(network_scope="lab", actor_platform="telegram", actor_id="10",
+                      reason="Reviewed device ownership", resolved_at=NOW + timedelta(seconds=1))
+        values.update(changes)
+        return repository.resolve_audited(value.finding_id, **values)
+
+    def test_detection_audited_resolution_is_scoped_and_survives_restart(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        self.assertIsNone(self.audited_resolution(self.detection_repository, value, network_scope="other"))
+        self.assertEqual(self.detection_repository.get_state(value.finding_id).status, FindingStatus.OPEN)
+        state = self.audited_resolution(self.detection_repository, value)
+        self.storage.close()
+        self.storage.initialize()
+        audit = self.detection_repository.get_resolution(value.finding_id, network_scope="lab")
+        self.assertEqual((audit.actor_platform, audit.actor_id, audit.reason),
+                         ("telegram", "10", "Reviewed device ownership"))
+        self.assertEqual(audit.resolved_at, state.resolved_at)
+        self.assertIsNone(self.detection_repository.get_resolution(value.finding_id, network_scope="other"))
+        self.assertEqual(self.detection_repository.get(value.finding_id), value)
+
+    def test_detection_audited_retry_preserves_original_actor_and_reason(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        first = self.audited_resolution(self.detection_repository, value)
+        audit = self.detection_repository.get_resolution(value.finding_id, network_scope="lab")
+        second = self.audited_resolution(self.detection_repository, value, actor_platform="discord", actor_id="20",
+                                         reason="Different review", resolved_at=NOW + timedelta(seconds=3))
+        self.assertEqual(first, second)
+        self.assertEqual(self.detection_repository.get_resolution(value.finding_id, network_scope="lab"), audit)
+
+    def test_detection_audited_resolution_failure_rolls_back_state_and_audit(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        transaction = self.storage.transaction
+
+        @contextmanager
+        def interrupted():
+            with transaction() as connection:
+                yield connection
+                raise RuntimeError("injected audit failure")
+
+        with patch.object(self.storage, "transaction", side_effect=interrupted):
+            with self.assertRaises(RuntimeError):
+                self.audited_resolution(self.detection_repository, value)
+        self.assertEqual(self.detection_repository.get_state(value.finding_id).status, FindingStatus.OPEN)
+        self.assertIsNone(self.detection_repository.get_resolution(value.finding_id, network_scope="lab"))
+        self.assertIsNotNone(self.audited_resolution(self.detection_repository, value))
+
+    def test_detection_audited_resolution_rejects_stale_time_and_missing_finding(self):
+        value = finding()
+        self.assertIsNone(self.audited_resolution(self.detection_repository, value))
+        self.detection_repository.save_once(value)
+        with self.assertRaises(ValueError):
+            self.audited_resolution(self.detection_repository, value, resolved_at=NOW - timedelta(seconds=1))
+        self.assertIsNone(self.detection_repository.get_resolution(value.finding_id, network_scope="lab"))
+
+    def test_detection_legacy_resolution_does_not_invent_operator_audit(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        first = self.detection_repository.resolve(value.finding_id, resolved_at=NOW)
+        self.assertEqual(self.audited_resolution(self.detection_repository, value), first)
+        self.assertIsNone(self.detection_repository.get_resolution(value.finding_id, network_scope="lab"))
+
+    def test_detection_concurrent_audited_resolutions_keep_one_complete_record(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        other = DetectionRepository(self.independent_storage())
+        barrier = Barrier(2)
+
+        def resolve(repository, actor, second):
+            barrier.wait(timeout=5)
+            return self.audited_resolution(repository, value, actor_id=actor, reason="Review " + actor,
+                                           resolved_at=NOW + timedelta(seconds=second))
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(resolve, self.detection_repository, "10", 1)
+            second = executor.submit(resolve, other, "20", 2)
+            left, right = first.result(timeout=10), second.result(timeout=10)
+        self.assertEqual(left, right)
+        audit = self.detection_repository.get_resolution(value.finding_id, network_scope="lab")
+        self.assertEqual(audit.resolved_at, left.resolved_at)
+        self.assertEqual(audit.reason, "Review " + audit.actor_id)
+        self.assertEqual(audit.actor_id, "10" if audit.resolved_at == NOW + timedelta(seconds=1) else "20")
 
     def test_detection_resolution_survives_restart_and_preserves_original_evidence(self):
         value = finding()
@@ -297,12 +490,71 @@ class DetectionIngestionContract:
         persistence.persist_event(self.detection_event("unassociated", mac_address="02:11:22:33:44:66"))
         self.assertEqual(persistence.findings.query(), [])
 
-    def test_detection_observations_and_startup_baseline_do_not_invent_discoveries(self):
+    def test_detection_discovery_observations_create_one_review_finding(self):
         persistence = self.detection_runtime()
         persistence.persist_discovery_observations([DiscoveredDevice(
             "198.51.100.20", mac_address="02:11:22:33:44:55", discovery_source="arp", discovered_at=NOW,
         )])
+        first = persistence.findings.query()
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0].rule_id, "ASSET-001")
+        self.assertEqual(persistence.security_events.get(first[0].event_ids[0]).event_type,
+                         SecurityEventType.DISCOVERY_OBSERVATION)
+        persistence.persist_discovery_observations([DiscoveredDevice(
+            "198.51.100.20", mac_address="02:11:22:33:44:55", discovery_source="icmp", discovered_at=NOW,
+        )])
+        persistence.persist_event(self.detection_event())
+        self.assertEqual(persistence.findings.query(), first)
+
+    def test_detection_observation_trust_and_hostname_boundaries(self):
+        persistence = self.detection_runtime()
+        asset = self.detected_asset(persistence, trust_level="trusted")
+        persistence.persist_discovery_observations([DiscoveredDevice(
+            "198.51.100.20", mac_address="02:11:22:33:44:55", discovery_source="arp", discovered_at=NOW,
+        )])
+        event = SecurityEvent(SecurityEventType.HOSTNAME_OBSERVATION, "hostname_resolver", "Resolved", NOW,
+                              event_id="hostname-only", asset_id=asset.asset_id, network_scope="lab")
+        with self.storage.transaction() as connection:
+            connection.execute("UPDATE assets SET trust_level = 'unknown' WHERE asset_id = ?", (asset.asset_id,))
+        persistence.security_events.save(event)
+        self.assertEqual(persistence.detection_engine.process(event), [])
         self.assertEqual(persistence.findings.query(), [])
+
+    def test_detection_expanded_policy_retains_version_one_history(self):
+        persistence = self.detection_runtime()
+        asset = self.detected_asset(persistence)
+        old = finding(dedup_key=asset.asset_id, asset_id=asset.asset_id)
+        persistence.findings.save_once(old)
+        persistence.findings.resolve(old.finding_id, resolved_at=NOW)
+        persistence.persist_event(self.detection_event())
+        values = persistence.findings.query(asset_id=asset.asset_id)
+        self.assertEqual({value.rule_version for value in values}, {1, 2})
+        self.assertEqual(persistence.findings.get_state(old.finding_id).status, FindingStatus.RESOLVED)
+
+    def test_detection_macless_observation_promotion_and_restart_keep_one_finding(self):
+        persistence = self.detection_runtime()
+        first = DiscoveredDevice("198.51.100.20", discovery_source="icmp", discovered_at=NOW)
+        persistence.persist_discovery_observations([first])
+        original = persistence.findings.query()
+        self.assertEqual(len(original), 1)
+        persistence.persist_discovery_observations([DiscoveredDevice(
+            "198.51.100.20", mac_address="02:11:22:33:44:55", discovery_source="arp", discovered_at=NOW,
+        )])
+        self.storage.close()
+        self.storage.initialize()
+        persistence = self.detection_runtime()
+        persistence.persist_discovery_observations([first])
+        self.assertEqual(persistence.findings.query(), original)
+
+    def test_detection_failed_observation_finding_can_retry_from_same_evidence(self):
+        persistence = self.detection_runtime()
+        device = DiscoveredDevice("198.51.100.20", discovery_source="icmp", discovered_at=NOW)
+        with patch.object(persistence.findings, "save_once", side_effect=RuntimeError("private-row")):
+            with self.assertLogs("services.detection.engine", level="ERROR"):
+                persistence.persist_discovery_observations([device])
+        self.assertEqual(persistence.findings.query(), [])
+        persistence.persist_discovery_observations([device])
+        self.assertEqual(len(persistence.findings.query()), 1)
 
     def collector_failure(self, persistence, number, *, second=None):
         timestamp = NOW + timedelta(seconds=number if second is None else second)
@@ -442,7 +694,7 @@ class DetectionIngestionContract:
         from services.alerting.engine import AlertEngine
         from services.discovery.device_registry import DeviceRegistry
         from services.discovery.event_bus import EventBus
-        from services.discovery.models import ZTEDevice
+        from services.discovery.models import ZTEDevice, ZTEObservation
         from services.discovery.presence_tracker import PresenceTracker
         from services.discovery.zte_monitor import ZTEMonitor
         from services.storage import PersistingCollector, PersistingNotificationManager
@@ -450,7 +702,11 @@ class DetectionIngestionContract:
         persistence = self.detection_runtime()
         persistence.assets.vendor_lookup = lambda mac: None
         device = ZTEDevice(mac_address="02:11:22:33:44:55", ip_address="198.51.100.20")
-        collector = Mock(collect=Mock(side_effect=[[], [device], [device]]))
+        baseline = ZTEDevice(mac_address="02:11:22:33:44:66", ip_address="198.51.100.21")
+        collector = Mock(collect=Mock(side_effect=[[baseline], [baseline, device], [baseline, device]]))
+        collector.last_observations = (ZTEObservation("zte_dhcp", NOW, {
+            "mac_address": baseline.mac_address, "ip_address": baseline.ip_address,
+        }),)
         notifications = Mock()
         registry = DeviceRegistry()
         bus = EventBus(asynchronous=False)
@@ -459,11 +715,17 @@ class DetectionIngestionContract:
         monitor = ZTEMonitor(Mock(), collector=PersistingCollector(collector, persistence), registry=registry,
                              presence_tracker=PresenceTracker(registry), on_event=persistence.persist_event, event_bus=bus)
         self.assertEqual(monitor.poll_once(), [])
-        self.assertEqual(persistence.findings.query(), [])
+        baseline_findings = persistence.findings.query()
+        self.assertEqual(len(baseline_findings), 1)
+        self.assertEqual(persistence.security_events.get(baseline_findings[0].event_ids[0]).event_type,
+                         SecurityEventType.DHCP_OBSERVATION)
+        self.assertIsNotNone(persistence.assets.get_by_mac(baseline.mac_address))
+        notifications.notify.assert_not_called()
         event = monitor.poll_once()[0]
         self.assertEqual(monitor.poll_once(), [])
         notifications.notify.assert_called_once()
-        self.assertEqual(persistence.findings.query()[0].event_ids, (event.event_id,))
+        self.assertEqual(persistence.findings.query(event_id=event.event_id)[0].event_ids, (event.event_id,))
+        self.assertEqual(len(persistence.findings.query()), 2)
         self.assertEqual(len(persistence.alerts.list()), 1)
 
     def test_detection_windows_support_datetime_range_boundaries(self):
@@ -497,6 +759,7 @@ class TestSQLiteDetection(DetectionRepositoryContract, DetectionIngestionContrac
         event = SecurityEvent(SecurityEventType.COLLECTOR_ERROR, "test", "Failure", NOW)
         SecurityEventRepository(self.storage).save(event)
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_resolutions")
             connection.execute("DROP TABLE detection_evidence")
             connection.execute("DROP TABLE detection_findings")
             connection.execute("UPDATE storage_metadata SET schema_version = 7")
@@ -508,6 +771,7 @@ class TestSQLiteDetection(DetectionRepositoryContract, DetectionIngestionContrac
     def test_failed_detection_migration_rolls_back_schema_seven(self):
         from services.storage.migrations import DETECTION_STATEMENTS
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_resolutions")
             connection.execute("DROP TABLE detection_evidence")
             connection.execute("DROP TABLE detection_findings")
             connection.execute("UPDATE storage_metadata SET schema_version = 7")
@@ -521,3 +785,30 @@ class TestSQLiteDetection(DetectionRepositoryContract, DetectionIngestionContrac
             self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name = 'detection_findings'").fetchone())
         self.storage.initialize()
         self.assertTrue(self.detection_repository.save_once(finding())[1])
+
+    def test_audit_upgrade_preserves_existing_resolution_without_attribution(self):
+        value = finding()
+        self.detection_repository.save_once(value)
+        state = self.detection_repository.resolve(value.finding_id, resolved_at=NOW)
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_resolutions")
+            connection.execute("UPDATE storage_metadata SET schema_version = 8")
+        self.storage.close()
+        self.storage.initialize()
+        self.assertEqual(self.detection_repository.get_state(value.finding_id), state)
+        self.assertIsNone(self.detection_repository.get_resolution(value.finding_id, network_scope="lab"))
+
+    def test_failed_audit_upgrade_rolls_back_schema_eight(self):
+        from services.storage.migrations import DETECTION_AUDIT_STATEMENTS
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_resolutions")
+            connection.execute("UPDATE storage_metadata SET schema_version = 8")
+        self.storage.close()
+        with patch("services.storage.sqlite.DETECTION_AUDIT_STATEMENTS", DETECTION_AUDIT_STATEMENTS + ("INVALID SQL",)):
+            with self.assertRaises(StorageInitializationError):
+                self.storage.initialize()
+        import sqlite3
+        with closing(sqlite3.connect(self.storage.database_path)) as connection:
+            self.assertEqual(connection.execute("SELECT schema_version FROM storage_metadata").fetchone()[0], 8)
+            self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name = 'detection_resolutions'").fetchone())
+        self.storage.initialize()

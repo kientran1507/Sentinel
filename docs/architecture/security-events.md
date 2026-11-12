@@ -6,6 +6,8 @@ Canonical persistence, ZTE transitions, actual parsed DHCP/mesh observations, an
 
 ## Version 1 Contract
 
+Milestone 3 adds strict connection, authentication-failure, and policy-labelled denied-access event types through an explicit scoped JSONL import path. These types require actual endpoint and producer labels, with type-specific metadata. The envelope remains version 1. [Activity evidence](activity-evidence.md)
+
 | Field | Rule |
 | --- | --- |
 | `event_id` | Nonempty opaque string; new events default to UUIDs, adapters preserve producer IDs. IDs identify events, not assets. |
