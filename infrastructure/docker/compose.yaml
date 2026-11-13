@@ -1,0 +1,69 @@
+name: sentinel
+
+x-common: &common
+  image: ${SENTINEL_IMAGE:-sentinel:local}
+  build:
+    context: ../..
+    dockerfile: infrastructure/docker/Dockerfile
+    target: runtime
+  user: "${SENTINEL_UID:-10001}:${SENTINEL_GID:-10001}"
+  network_mode: host
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+  restart: unless-stopped
+  stop_grace_period: 45s
+  deploy:
+    replicas: 1
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  runtime:
+    <<: *common
+    profiles: [runtime]
+    command: [sentinel, start]
+    environment:
+      SENTINEL_CONFIG_FILE: /run/secrets/runtime_config
+      SENTINEL_NETWORK_SCOPE: ${SENTINEL_SCOPE:?Set SENTINEL_SCOPE}
+    secrets: [runtime_config]
+
+  ssh-collector:
+    <<: *common
+    profiles: [ssh]
+    command:
+      - sentinel
+      - host-watch
+      - ssh
+      - --scope
+      - ${SENTINEL_SCOPE:?Set SENTINEL_SCOPE}
+      - --collector-id
+      - ${SENTINEL_COLLECTOR_ID:?Set SENTINEL_COLLECTOR_ID}
+      - --host-ip
+      - ${SENTINEL_HOST_IP:?Set SENTINEL_HOST_IP}
+      - --journal-directory
+      - /host/journal
+      - --apply
+    environment:
+      SENTINEL_CONFIG_FILE: /run/secrets/collector_config
+    secrets: [collector_config]
+    group_add:
+      - "${SENTINEL_JOURNAL_GID:?Set the host journal group ID}"
+    volumes:
+      - type: bind
+        source: ${SENTINEL_JOURNAL_DIRECTORY:?Set the existing host journal directory}
+        target: /host/journal
+        read_only: true
+        bind:
+          create_host_path: false
+
+secrets:
+  runtime_config:
+    file: ${SENTINEL_RUNTIME_CONFIG:?Set the runtime configuration file path}
+  collector_config:
+    file: ${SENTINEL_COLLECTOR_CONFIG:?Set the collector configuration file path}

@@ -25,7 +25,7 @@ class HostPoll:
 class HostMonitor:
     def __init__(self, sources, *, scope, collector, host_ip=None, ssh_port=22,
                  lookback_minutes=5, limit=500, pending_limit=5000,
-                 storage_factory=None, collect=collect_host):
+                 storage_factory=None, collect=collect_host, detection_rules=None, journal_directory=None):
         sources = tuple(sources)
         if not sources or any(source not in (*SOURCES, *OPTIONAL_SOURCES) for source in sources):
             raise ValueError("choose supported host sources")
@@ -37,10 +37,13 @@ class HostMonitor:
         self.sources = tuple(dict.fromkeys(sources))
         self.options = dict(scope=scope, collector=collector, host_ip=host_ip, ssh_port=ssh_port,
                             lookback_minutes=lookback_minutes, limit=limit)
+        if journal_directory is not None:
+            self.options["journal_directory"] = journal_directory
         self.scope = scope
         self.pending_limit = pending_limit
         self.storage_factory = storage_factory
         self.collect = collect
+        self.detection_rules = None if detection_rules is None else tuple(detection_rules)
         self.pending = {}
         self.storage = None
         self.persistence = None
@@ -68,7 +71,9 @@ class HostMonitor:
                 if self.storage is None:
                     self.storage = self.storage_factory()
                     self.storage.initialize()
-                    self.persistence = RuntimePersistence(self.storage, network_scope=self.scope)
+                    self.persistence = RuntimePersistence(
+                        self.storage, network_scope=self.scope, detection_rules=self.detection_rules,
+                    )
                 for event_id, event in list(self.pending.items()):
                     self.persistence.ingest_security_event(event)
                     del self.pending[event_id]

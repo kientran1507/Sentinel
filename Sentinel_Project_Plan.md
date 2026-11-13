@@ -77,11 +77,21 @@ Status is in progress from 2026-11-09. The [detection engine](docs/architecture/
 - [x] Document logic, required evidence, false positives, response, and validation scenarios.
 - [x] Expose scoped finding lists and detail inspection through existing allowlisted Discord/Telegram commands with bounded responses.
 - [x] Expose bounded collector-failure threshold/window configuration through both startup commands.
+- [x] Expose bounded per-rule activity thresholds and windows through startup, import, and host watching, preserving settings through retry and replay.
 - [x] Include startup/standalone-discovery findings with versioned replay/deduplication and preserved prior finding history.
 - [x] Use command-based finding review alongside existing notification delivery, and allow scoped resolution by existing allowlisted operators with a required reason and atomic audit.
 - [x] Implement NET-001/002/003 and AUTH-001/002 against explicit canonical evidence, with scoped import and controlled synthetic tests on both backends.
 - [x] Implement read-only SSH journald, interface statistics, and nftables/iptables counter adapters with unavailable/unconfigured reporting, protected export inputs, and scoped 30-day retention preview.
 - [x] Add opt-in periodic host watching with bounded process-local retries, partial-write recovery, source isolation, and graceful shutdown.
+- [x] Add preview-first controlled recovery acceptance with process-local injected faults, explicit buffer-loss accounting, retained findings/state, and replay on both backends. Real deployment outage and source-gap acceptance remain open.
+- [x] Add preview-first synthetic activity acceptance with negative controls, retained evidence, connection restart, and replay checks for all five activity rules.
+- [x] Add offline labelled activity evaluation with isolated scenarios, exact finding counts, bounded input, policy comparison, and strict evaluation failure reporting. Owner-reviewed live labels remain an acceptance gate.
+- [x] Validate controlled source saturation and gaps on both backends, including byte limits, retained-history reread, expired unread records, and finding replay after connection reopen. Live source-gap acceptance remains open.
+- [x] Add owner-requested Docker image and Compose packaging to support Milestone 3 deployment acceptance, with non-root operation, mounted configuration, journal access, and graceful termination.
+- [x] Build and validate the image and bounded SSH source/persistence workflow on the Linux Docker host.
+- [x] Complete coordinated integrated-runtime startup, bot/router checks, and graceful container stop/restart with post-restart command and history acceptance.
+- [x] Validate all five activity scenarios inside the deployed container and record a 30-minute normal-workload observation with retained evidence and healthy polls.
+- [ ] Complete labelled false-positive review, throughput/saturation, source-gap/failure acceptance, and remaining live activity sources.
 - [ ] Validate live telemetry adapters, gateway policy attribution, labelled lab scenarios, and false-positive tuning for activity rules.
 
 The [Milestone 3 acceptance matrix](docs/development/milestone-3-acceptance.md) separates implemented requirements from completion gates. Initialization also rejects newer unsupported database schemas before application schema changes.
@@ -93,7 +103,7 @@ The [Milestone 3 acceptance matrix](docs/development/milestone-3-acceptance.md) 
 | NET-001 | Network scan | Connection or scan telemetry |
 | NET-002 | Network sweep | Many destinations within a time window |
 | AUTH-001 | Repeated authentication failures | Authentication logs from one source |
-| AUTH-002 | Distributed authentication failures | Failures across accounts/services |
+| AUTH-002 | Distributed authentication failures | Distinct sources targeting one account/service and destination IP |
 | NET-003 | Restricted network access | Gateway/firewall or equivalent traffic telemetry |
 
 ARP/ICMP discovery alone cannot establish scan, authentication, or traffic-based detections. Preserve event links and asset associations in alerts.

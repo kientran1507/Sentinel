@@ -27,6 +27,19 @@ def activity(event_id, *, kind=SecurityEventType.CONNECTION_OBSERVATION, source_
 
 
 class TestActivityContract(unittest.TestCase):
+    def test_registry_overrides_preserve_other_rules_order_and_defaults(self):
+        policy = ActivityRule("AUTH-001", 2, 60)
+        original = default_rules()
+        configured = default_rules(activity_rules=(policy,))
+        self.assertEqual([rule.rule_id for rule in configured], [rule.rule_id for rule in original])
+        self.assertEqual(tuple(rule for rule in configured if rule.rule_id != policy.rule_id),
+                         tuple(rule for rule in original if rule.rule_id != policy.rule_id))
+        self.assertEqual(next(rule for rule in configured if rule.rule_id == policy.rule_id), policy)
+        self.assertEqual(default_rules(), original)
+        for overrides in ((policy, policy), (object(),), ("AUTH-001",)):
+            with self.assertRaises(ValueError):
+                default_rules(activity_rules=overrides)
+
     def test_all_default_rule_ids_and_configuration(self):
         self.assertEqual({rule.rule_id for rule in default_rules()},
                          {"ASSET-001", "OPS-001", "NET-001", "NET-002", "AUTH-001", "AUTH-002", "NET-003"})
@@ -59,6 +72,39 @@ class TestActivityContract(unittest.TestCase):
 
 
 class ActivityDetectionContract:
+    def test_cli_custom_activity_policies_persist_and_replay_on_both_backends(self):
+        from scripts.sentinel import main
+        from services.storage import DetectionRepository
+
+        events = [activity(f"custom-port-{port}", source="scan", port=port) for port in (80, 443)]
+        events.extend(activity(f"custom-sweep-{number}", source="sweep",
+                               destination_ip=f"198.51.100.{number}") for number in (1, 2))
+        for number, address in enumerate(("192.0.2.1", "192.0.2.1", "192.0.2.2")):
+            events.append(activity(f"custom-auth-{number}", source="ssh",
+                                   kind=SecurityEventType.AUTHENTICATION_FAILURE, source_ip=address,
+                                   metadata={"service": "ssh", "account": "lab-user"}))
+        events.extend(activity(f"custom-denial-{number}", source="firewall",
+                               kind=SecurityEventType.ACCESS_DENIED,
+                               metadata={"transport": "tcp", "policy_id": "restricted-lab"})
+                      for number in (1, 2))
+        rule_ids = ("NET-001", "NET-002", "AUTH-001", "AUTH-002", "NET-003")
+        options = [value for rule_id in rule_ids for value in ("--activity-rule", f"{rule_id}=2/60")]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "custom-policies.jsonl"
+            path.write_text("\n".join(json.dumps(event.to_dict()) for event in events), encoding="utf-8")
+            for _ in range(2):
+                storage = self.independent_storage()
+                with patch("scripts.sentinel.load_dotenv"), \
+                        patch("scripts.sentinel.create_storage", return_value=storage):
+                    self.assertEqual(main(["ingest", str(path), "--scope", "lab", "--apply", *options],
+                                          output=StringIO()), 0)
+                self.assertFalse(storage.is_initialized)
+        findings = DetectionRepository(self.storage).query()
+        self.assertEqual({finding.rule_id for finding in findings}, set(rule_ids))
+        self.assertEqual(len(findings), 5)
+        for finding in findings:
+            self.assertEqual((finding.threshold, finding.window_seconds, len(finding.event_ids)), (2, 60, 2))
+
     def activity_runtime(self, rule_id, *, threshold=2):
         return RuntimePersistence(self.storage, network_scope="lab",
                                   detection_rules=(ActivityRule(rule_id, threshold=threshold, window_seconds=60),))
@@ -136,6 +182,57 @@ class ActivityDetectionContract:
         persistence.ingest_security_event(replace(first, event_id="other-policy", metadata={"transport": "tcp", "policy_id": "other"}))
         self.assertEqual(persistence.findings.query(), [])
         persistence.ingest_security_event(replace(first, event_id="denial-second"))
+        self.assertEqual(len(persistence.findings.query()), 1)
+
+    def test_distributed_auth_counts_normalized_sources_not_attempts_or_successes(self):
+        persistence = self.activity_runtime("AUTH-002", threshold=3)
+        first = activity("distributed-first", kind=SecurityEventType.AUTHENTICATION_FAILURE,
+                         source_ip="2001:db8::1", metadata={"service": "ssh", "account": "lab-user"})
+        for index in range(12):
+            persistence.ingest_security_event(replace(
+                first, event_id=f"distributed-repeat-{index}",
+                source_endpoint=NetworkEndpoint("2001:0db8:0:0:0:0:0:1")))
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-second", source_endpoint=NetworkEndpoint("192.0.2.2")))
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-success", event_type=SecurityEventType.AUTHENTICATION_SUCCESS,
+            source_endpoint=NetworkEndpoint("192.0.2.3")))
+        self.assertEqual(persistence.findings.query(), [])
+        third = replace(first, event_id="distributed-third", source_endpoint=NetworkEndpoint("192.0.2.3"))
+        persistence.ingest_security_event(third)
+        finding = persistence.findings.query()[0]
+        evidence = persistence.findings.list_evidence(finding.finding_id, network_scope="lab")
+        self.assertEqual({event.source_endpoint.ip_address for _, event in evidence},
+                         {"2001:db8::1", "192.0.2.2", "192.0.2.3"})
+        self.assertTrue(all(event.event_type == SecurityEventType.AUTHENTICATION_FAILURE
+                            for _, event in evidence))
+        self.storage.close()
+        self.storage.initialize()
+        persistence = self.activity_runtime("AUTH-002", threshold=3)
+        persistence.ingest_security_event(third)
+        self.assertEqual(persistence.findings.query(), [finding])
+
+    def test_distributed_auth_does_not_combine_windows_scopes_or_collectors(self):
+        persistence = self.activity_runtime("AUTH-002", threshold=3)
+        start = NOW.replace(second=0)
+        first = activity("distributed-base", kind=SecurityEventType.AUTHENTICATION_FAILURE,
+                         timestamp=start, metadata={"service": "ssh", "account": "lab-user"})
+        persistence.ingest_security_event(first)
+        for index, changes in enumerate((
+                {"timestamp": start + timedelta(seconds=60)},
+                {"collector": "other-acceptance-collector"}, {"source": "other-sensor"})):
+            persistence.ingest_security_event(replace(
+                first, event_id=f"distributed-isolated-{index}",
+                source_endpoint=NetworkEndpoint("192.0.2.2"), **changes))
+        other = RuntimePersistence(self.storage, network_scope="other", detection_rules=(
+            ActivityRule("AUTH-002", threshold=3, window_seconds=60),))
+        other.ingest_security_event(replace(first, event_id="distributed-other-scope",
+                                            network_scope="other", source_endpoint=NetworkEndpoint("192.0.2.3")))
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-same-window-second", source_endpoint=NetworkEndpoint("192.0.2.2")))
+        self.assertEqual(persistence.findings.query(), [])
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-same-window-third", source_endpoint=NetworkEndpoint("192.0.2.3")))
         self.assertEqual(len(persistence.findings.query()), 1)
 
     def test_activity_late_evidence_window_boundary_and_restart(self):

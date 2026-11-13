@@ -13,7 +13,8 @@ class DetectionEngine:
         self.events = events
         self.findings = findings
 
-    def process(self, event: SecurityEvent):
+    def process(self, event: SecurityEvent, *, strict=False):
+        """Evaluate persisted evidence; offline validation can fail fast with strict=True."""
         if not isinstance(event, SecurityEvent):
             raise ValueError("detection requires a SecurityEvent")
         if self.events.get(event.event_id) != event:
@@ -31,6 +32,8 @@ class DetectionEngine:
                     if inserted:
                         created.append(finding)
             except Exception as exc:
+                if strict:
+                    raise
                 logger.error(
                     "Detection evaluation failed: rule=%s error=%s", rule.rule_id, type(exc).__name__,
                     extra={"event_id": event.event_id, "operation": "detect", "error_type": type(exc).__name__},

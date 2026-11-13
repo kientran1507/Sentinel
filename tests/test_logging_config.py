@@ -242,8 +242,9 @@ class TestOperationalFailureLogs(unittest.TestCase):
         from scripts.sentinel import run_runtime
 
         calls = []
-        def startup_failure(*, collector_failure_rule=None):
+        def startup_failure(*, collector_failure_rule=None, activity_rules=()):
             self.assertIsNone(collector_failure_rule)
+            self.assertEqual(activity_rules, ())
             calls.append("runtime")
             raise RuntimeError("fixture failure")
 

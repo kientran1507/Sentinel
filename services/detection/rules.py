@@ -168,8 +168,16 @@ class ActivityRule:
         )
 
 
-def default_rules(*, collector_failure_rule=None):
-    return (UnknownAssetRule(), collector_failure_rule or CollectorFailureRule(),
+def default_rules(*, collector_failure_rule=None, activity_rules=()):
+    overrides = {}
+    for rule in activity_rules:
+        if not isinstance(rule, ActivityRule):
+            raise ValueError("activity overrides require ActivityRule values")
+        if rule.rule_id in overrides:
+            raise ValueError("duplicate activity rule override")
+        overrides[rule.rule_id] = rule
+    defaults = (UnknownAssetRule(), collector_failure_rule or CollectorFailureRule(),
             ActivityRule("NET-001", threshold=10), ActivityRule("NET-002", threshold=10),
             ActivityRule("AUTH-001", threshold=5), ActivityRule("AUTH-002", threshold=3),
             ActivityRule("NET-003", threshold=1))
+    return tuple(overrides.get(rule.rule_id, rule) for rule in defaults)

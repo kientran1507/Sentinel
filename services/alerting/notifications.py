@@ -16,8 +16,10 @@ class NotificationError(RuntimeError):
     pass
 
 
-def _safe_response_body(body: bytes) -> str:
-    text = body.decode("utf-8", errors="replace").replace("\r", " ").replace("\n", " ").strip()
+def _safe_response_body(body: bytes | str) -> str:
+    # HTTPError with no response stream uses StringIO on Python 3.11.
+    text = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else body
+    text = text.replace("\r", " ").replace("\n", " ").strip()
     if len(text) > 300:
         text = text[:300] + "..."
     return text or "<empty>"

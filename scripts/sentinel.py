@@ -31,7 +31,7 @@ from services.discovery.presence_tracker import PresenceTracker
 from services.discovery.zte_collector import ZTECollector
 from services.discovery.zte_h3601p_client import ZTEH3601PClient
 from services.discovery.zte_monitor import ZTEMonitor
-from services.detection import CollectorFailureRule, default_rules
+from services.detection import ActivityRule, CollectorFailureRule, default_rules
 from services.events.importing import read_canonical_events
 from services.telemetry.host import OPTIONAL_SOURCES, SOURCES, collect_host
 from services.telemetry.monitor import HostMonitor
@@ -154,10 +154,27 @@ def _aware_timestamp(value):
         raise argparse.ArgumentTypeError("use an ISO 8601 timestamp with a timezone") from exc
 
 
+def _activity_policy(value):
+    try:
+        rule_id, settings = value.split("=")
+        threshold, window = settings.split("/")
+        return ActivityRule(rule_id, threshold=int(threshold), window_seconds=int(window))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "use RULE=COUNT/SECONDS with NET-001/002/003 or AUTH-001/002, "
+            "count 1-500 and seconds 1-86400"
+        ) from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sentinel", description="Sentinel monitoring commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    ingest = subparsers.add_parser("ingest", help="Validate or explicitly import canonical JSONL evidence")
+    activity_options = argparse.ArgumentParser(add_help=False)
+    activity_options.add_argument(
+        "--activity-rule", type=_activity_policy, action="append", default=[], metavar="RULE=COUNT/SECONDS",
+        help="Override one activity rule's threshold and UTC window. Repeat for different rule IDs.",
+    )
+    ingest = subparsers.add_parser("ingest", parents=[activity_options], help="Validate or explicitly import canonical JSONL evidence")
     ingest.add_argument("path", help="Canonical JSONL input file")
     ingest.add_argument("--scope", required=True, help="Exact expected network scope")
     ingest.add_argument("--apply", action="store_true", help="Persist validated input and evaluate detection rules")
@@ -166,6 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_options.add_argument("--scope", required=True)
     host_options.add_argument("--collector-id", required=True, help="Unique nonsecret host/namespace label")
     host_options.add_argument("--host-ip", help="Explicit target IP for SSH authentication records")
+    host_options.add_argument("--journal-directory", help="Read an existing mounted journal directory")
     host_options.add_argument("--ssh-port", type=partial(_bounded_positive_integer, maximum=65535), default=22)
     host_options.add_argument("--lookback-minutes", type=partial(_bounded_positive_integer, maximum=43200), default=5)
     host_options.add_argument("--limit", type=partial(_bounded_positive_integer, maximum=10000), default=500)
@@ -173,7 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
     host.add_argument("--events", action="store_true", help="Write canonical JSONL to stdout and source status to stderr")
     host.add_argument("--input", help="Read an existing source export instead of executing a command")
     host.add_argument("--observed-at", type=_aware_timestamp, help="Required aware capture time for counter exports")
-    watch = subparsers.add_parser("host-watch", parents=[host_options], help="Explicit periodic host collection")
+    watch = subparsers.add_parser("host-watch", parents=[host_options, activity_options], help="Explicit periodic host collection")
     watch.add_argument("--interval", type=partial(_bounded_positive_integer, maximum=86400), default=60)
     watch.add_argument("--polls", type=partial(_bounded_positive_integer, maximum=1000000), help="Stop after this many polls")
     watch.add_argument("--pending-limit", type=partial(_bounded_positive_integer, maximum=10000), default=5000)
@@ -199,7 +217,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     bot = subparsers.add_parser("bot", help="Run inbound command listeners")
     bot_subparsers = bot.add_subparsers(dest="bot_command", required=True)
-    detection_options = argparse.ArgumentParser(add_help=False)
+    detection_options = argparse.ArgumentParser(add_help=False, parents=[activity_options])
     detection_options.add_argument(
         "--collector-failure-threshold", type=partial(_bounded_positive_integer, maximum=500),
         default=3, metavar="COUNT", help="Collector failures required for a finding (1-500, default 3)",
@@ -215,9 +233,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Iterable[str]] = None, *, registry: Optional[DeviceRegistry] = None, output: TextIO = sys.stdout) -> int:
-    args = build_parser().parse_args(list(argv) if argv is not None else None)
+    parser = build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    if hasattr(args, "activity_rule"):
+        try:
+            default_rules(activity_rules=args.activity_rule)
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.command == "ingest":
-        return ingest_file(args.path, network_scope=args.scope, apply=args.apply, output=output)
+        return ingest_file(args.path, network_scope=args.scope, apply=args.apply, output=output,
+                           activity_rules=args.activity_rule)
     if args.command == "host-snapshot":
         return host_snapshot(args, output=output)
     if args.command == "host-watch":
@@ -242,7 +267,7 @@ def main(argv: Optional[Iterable[str]] = None, *, registry: Optional[DeviceRegis
             return 0
         return run_runtime(output, collector_failure_rule=CollectorFailureRule(
             threshold=args.collector_failure_threshold, window_seconds=args.collector_failure_window,
-        ))
+        ), activity_rules=tuple(args.activity_rule))
 
     manager = NotificationManager()
     manager.add_from_environment()
@@ -260,6 +285,10 @@ def create_storage():
     return PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
 
 
+def request_stop(signum, frame):
+    raise KeyboardInterrupt
+
+
 def host_watch(args, *, output):
     sources = (*SOURCES, *OPTIONAL_SOURCES) if args.source == "all" else (args.source,)
 
@@ -269,16 +298,17 @@ def host_watch(args, *, output):
             ssh_port=args.ssh_port, lookback_minutes=args.lookback_minutes, limit=args.limit,
             pending_limit=args.pending_limit, storage_factory=create_storage if args.apply else None,
             collect=collect_host,
+            detection_rules=default_rules(activity_rules=args.activity_rule),
+            journal_directory=args.journal_directory,
         )
     except ValueError:
         print("Invalid host watch settings.", file=output)
         return 1
     completed = 0
+    accepted = dropped = rejected = 0
+    source_status_counts = {}
     cleanup_error = None
     failed = False
-
-    def request_stop(signum, frame):
-        raise KeyboardInterrupt
 
     previous_termination = None
     try:
@@ -291,6 +321,11 @@ def host_watch(args, *, output):
         while args.polls is None or completed < args.polls:
             result = monitor.poll_once()
             completed += 1
+            accepted += result.accepted_count
+            dropped += result.dropped_count
+            for source in result.sources:
+                rejected += source.rejected
+                source_status_counts[source.status] = source_status_counts.get(source.status, 0) + 1
             print(json.dumps({"poll": completed, **result.to_dict()}), file=output, flush=True)
             if args.polls is None or completed < args.polls:
                 time.sleep(args.interval)
@@ -304,6 +339,8 @@ def host_watch(args, *, output):
             signal.signal(signal.SIGTERM, previous_termination)
         cleanup_error = monitor.close()
         print(json.dumps({"state": "stopped", "completed_polls": completed,
+                          "accepted_count": accepted, "dropped_count": dropped,
+                          "rejected_count": rejected, "source_status_counts": source_status_counts,
                           "pending_count": len(monitor.pending), "cleanup_error": cleanup_error}), file=output, flush=True)
     return 1 if failed or monitor.pending or cleanup_error else 0
 
@@ -316,7 +353,8 @@ def host_snapshot(args, *, output):
     try:
         reports = [collect_host(source, scope=args.scope, collector=args.collector_id, host_ip=args.host_ip,
                                 ssh_port=args.ssh_port, lookback_minutes=args.lookback_minutes, limit=args.limit,
-                                input_path=args.input, timestamp=args.observed_at)
+                                input_path=args.input, timestamp=args.observed_at,
+                                journal_directory=args.journal_directory)
                    for source in sources]
     except ValueError:
         print("Invalid host collection settings.", file=output)
@@ -363,7 +401,7 @@ def prune_host_history(args, *, output):
     return exit_code
 
 
-def ingest_file(path, *, network_scope, apply=False, output=sys.stdout):
+def ingest_file(path, *, network_scope, apply=False, output=sys.stdout, activity_rules=()):
     try:
         events = read_canonical_events(path, network_scope=network_scope)
     except ValueError as exc:
@@ -382,7 +420,9 @@ def ingest_file(path, *, network_scope, apply=False, output=sys.stdout):
         load_dotenv()
         storage = create_storage()
         storage.initialize()
-        persistence = RuntimePersistence(storage, network_scope=network_scope)
+        persistence = RuntimePersistence(
+            storage, network_scope=network_scope, detection_rules=default_rules(activity_rules=activity_rules),
+        )
         for event in events:
             persistence.ingest_security_event(event)
             completed += 1
@@ -432,7 +472,7 @@ def refresh_registry() -> DeviceRegistry:
     return registry
 
 
-def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None) -> SentinelRuntime:
+def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None, activity_rules=()) -> SentinelRuntime:
     options = router_options()
 
     storage = create_storage()
@@ -440,7 +480,7 @@ def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None
     try:
         persistence = RuntimePersistence(
             storage, get_network_scope(), event_source="presence_tracker", collector="zte",
-            detection_rules=default_rules(collector_failure_rule=collector_failure_rule),
+            detection_rules=default_rules(collector_failure_rule=collector_failure_rule, activity_rules=activity_rules),
         )
         registry = DeviceRegistry()
         presence_tracker = PresenceTracker(registry)
@@ -484,16 +524,22 @@ def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None
         raise
 
 
-def run_runtime(output: TextIO = sys.stdout, *, collector_failure_rule: CollectorFailureRule | None = None) -> int:
+def run_runtime(output: TextIO = sys.stdout, *, collector_failure_rule: CollectorFailureRule | None = None,
+                activity_rules=()) -> int:
     configure_logging()
     try:
-        runtime = create_runtime(collector_failure_rule=collector_failure_rule)
+        runtime = create_runtime(collector_failure_rule=collector_failure_rule, activity_rules=activity_rules)
     except RuntimeError as exc:
         print(f"Sentinel startup failed: {exc}", file=output)
         return 1
 
     print("Sentinel starting...", file=output)
+    previous_termination = None
     try:
+        if threading.current_thread() is threading.main_thread():
+            previous_termination = signal.getsignal(signal.SIGTERM)
+            if previous_termination is not None:
+                signal.signal(signal.SIGTERM, request_stop)
         runtime.start()
         print("Discovery: started", file=output)
         print("Monitor: started", file=output)
@@ -504,7 +550,11 @@ def run_runtime(output: TextIO = sys.stdout, *, collector_failure_rule: Collecto
     except KeyboardInterrupt:
         print("\nStopping Sentinel...", file=output)
     finally:
-        runtime.stop()
+        try:
+            runtime.stop()
+        finally:
+            if previous_termination is not None:
+                signal.signal(signal.SIGTERM, previous_termination)
     print("Sentinel stopped", file=output)
     return 0
 

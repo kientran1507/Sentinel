@@ -43,6 +43,29 @@ IPTABLES = '*filter\n:INPUT ACCEPT [2462:738000]\n[47:7865] -A INPUT -m comment 
 
 
 class TestHostAdapters(unittest.TestCase):
+    def test_mounted_journal_directory_is_an_explicit_read_argument(self):
+        runner = Mock(return_value=json.dumps(journal_record()))
+        result = collect_host("ssh", scope="lab", collector="pi5", host_ip="198.51.100.5",
+                              runner=runner, journal_directory="/host/journal")
+        self.assertEqual((result.status, len(result.events)), ("available", 1))
+        self.assertIn("--directory=/host/journal", runner.call_args.args[0])
+        with self.assertRaises(ValueError):
+            collect_host("ssh", scope="lab", collector="pi5", host_ip="198.51.100.5",
+                         runner=runner, journal_directory="/host/journal", input_path="unused.jsonl")
+        self.assertEqual(runner.call_count, 1)
+
+    def test_snapshot_and_watch_preview_forward_mounted_journal_directory(self):
+        from services.telemetry.host import HostCollection
+
+        for command in (["host-snapshot", "ssh"], ["host-watch", "ssh", "--polls", "1"]):
+            with self.subTest(command=command), \
+                    patch("scripts.sentinel.collect_host", return_value=HostCollection("ssh", "available")) as collect, \
+                    patch("scripts.sentinel.load_dotenv") as load:
+                self.assertEqual(main(command + ["--scope", "lab", "--collector-id", "pi5",
+                                                 "--journal-directory", "/host/journal"], output=StringIO()), 0)
+                self.assertEqual(collect.call_args.kwargs["journal_directory"], "/host/journal")
+                load.assert_not_called()
+
     def collect(self, source, output, **changes):
         return collect_host(source, scope="lab", collector="pi5", host_ip="198.51.100.5",
                             runner=Mock(return_value=output), timestamp=NOW, **changes)

@@ -163,7 +163,7 @@ def validate_host_settings(*, scope, collector, lookback_minutes, limit):
 
 
 def collect_host(source, *, scope, collector, host_ip=None, ssh_port=22, lookback_minutes=5,
-                 limit=500, runner=None, timestamp=None, input_path=None):
+                 limit=500, runner=None, timestamp=None, input_path=None, journal_directory=None):
     validate_host_settings(scope=scope, collector=collector, lookback_minutes=lookback_minutes, limit=limit)
     if source in OPTIONAL_SOURCES:
         return HostCollection(source, "unconfigured", reason="optional_source_disabled")
@@ -175,6 +175,8 @@ def collect_host(source, *, scope, collector, host_ip=None, ssh_port=22, lookbac
         NetworkEndpoint(host_ip, ssh_port)
     if input_path is not None and source != "ssh" and timestamp is None:
         raise ValueError("counter exports require an explicit observation time")
+    if journal_directory is not None and input_path is not None:
+        raise ValueError("choose a journal directory or an export file")
     context = {"scope": scope, "collector": collector,
                "timestamp": timestamp or datetime.now(timezone.utc)}
     commands = {"ssh": ["journalctl", "--unit=ssh.service", "--output=json", "--no-pager", "--all",
@@ -183,6 +185,8 @@ def collect_host(source, *, scope, collector, host_ip=None, ssh_port=22, lookbac
                 "interfaces": ["ip", "-j", "-s", "link", "show"],
                 "nftables": ["nft", "-j", "-n", "list", "ruleset"],
                 "iptables": ["iptables-save", "-c"], "ip6tables": ["ip6tables-save", "-c"]}
+    if journal_directory is not None:
+        commands["ssh"].append(f"--directory={journal_directory}")
     try:
         if input_path is None:
             output = (runner or read_command)(commands[source])

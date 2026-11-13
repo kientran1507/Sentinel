@@ -23,9 +23,12 @@ These event kinds extend the accepted enum while retaining the envelope shape an
 ```text
 sentinel ingest lab-events.jsonl --scope lab
 sentinel ingest lab-events.jsonl --scope lab --apply
+sentinel ingest lab-events.jsonl --scope lab --activity-rule NET-001=2/60
 ```
 
 The first command validates input and reports the number of unique canonical events. Preview completes before configuration loading or storage creation. `--apply` loads the normal storage configuration, initializes that backend, and ingests the validated records through `RuntimePersistence.ingest_security_event()`. Router credentials and monitoring startup are outside this command's workflow.
+
+`--activity-rule RULE=COUNT/SECONDS` selects a threshold and fixed UTC window for one activity rule. Repeat the flag for distinct IDs. Unspecified rules retain their defaults. Preview validates the settings. Apply uses them for each event, including identical replay. Changed policies can produce additional findings from retained evidence. [Bounds and policy identity](../commands.md#local-cli)
 
 The importer requires exact scope agreement for every record. Use the active monitor's scope to review imported findings through that runtime's commands. Limits are 10 MiB per file, 64 KiB per physical line including its newline, and 10,000 nonblank records. Blank lines are permitted. Duplicate JSON fields, malformed UTF-8, invalid envelopes, scope mismatches, and conflicting IDs within the file fail preflight. Identical duplicate events coalesce.
 

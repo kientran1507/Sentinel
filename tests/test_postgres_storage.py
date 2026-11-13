@@ -27,6 +27,9 @@ from tests.test_activity_detection import ActivityDetectionContract
 from tests.test_host_telemetry import HostTelemetryContract
 from tests.test_host_monitor import HostMonitorContract
 from tests.test_refactor_regressions import SnapshotSerializationContract
+from tests.test_detection_acceptance import DetectionAcceptanceContract
+from tests.test_recovery_acceptance import RecoveryAcceptanceContract
+from tests.test_activity_evaluation import ActivityEvaluationContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
@@ -46,6 +49,9 @@ class TestPostgreSQLStorage(
     HostTelemetryContract,
     HostMonitorContract,
     SnapshotSerializationContract,
+    DetectionAcceptanceContract,
+    RecoveryAcceptanceContract,
+    ActivityEvaluationContract,
     unittest.TestCase,
 ):
     def setUp(self):

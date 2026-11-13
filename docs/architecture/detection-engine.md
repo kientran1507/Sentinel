@@ -19,6 +19,14 @@ flowchart LR
 
 Canonical commit precedes finding persistence. Each rule and finding write has an independent failure boundary, with safe error classification in logs. Canonical/legacy evidence can survive a failed detection attempt. An explicit replay can retry evaluation. Evaluation uses current inventory trust and currently retained canonical history, so replay results reflect those inputs at evaluation time. Ingestion and detection remain synchronous and can delay a poll during slow storage operations.
 
+Offline validation can explicitly call `DetectionEngine.process(event, strict=True)`
+to propagate the first rule or finding-write exception. The default remains
+best-effort, and runtime ingestion does not enable strict mode. Strict evaluation
+can leave earlier findings committed in its caller-owned database; it does not
+make the entire rule pass transactional. The
+[labelled evaluator](../development/labelled-activity-evaluation.md) uses isolated
+storage and treats such an exception as an evaluation failure.
+
 The existing device event bus supplies legacy alerts and notifications. Detection findings are available through the repository, a scoped `/findings` list, and `/finding` detail inspection. Allowlisted operators can resolve findings with an audited reason. API integration, acknowledgement, and incident workflows are later work. The current callbacks and history interfaces are described in the event contract. [Canonical events](security-events.md)
 
 ## Rule Contract and Configuration
@@ -29,7 +37,9 @@ The existing device event bus supplies legacy alerts and notifications. Detectio
 
 `sentinel start` and `sentinel bot start` accept `--collector-failure-threshold` and `--collector-failure-window`. The CLI validates integer bounds before loading configuration, then passes the immutable OPS-001 policy through `run_runtime()` and `create_runtime()` to the shared runtime registry. Defaults remain 3 failures and 300 seconds. Python callers can pass `collector_failure_rule=CollectorFailureRule(...)` to either runtime factory. [Startup options](../commands.md#local-cli)
 
-`RuntimePersistence(..., detection_rules=None)` selects the shared `default_rules()` registry containing ASSET-001, OPS-001, NET-001/002/003, and AUTH-001/002. Supplying a rule sequence replaces that default registry, and an empty sequence disables rule evaluation. Built-in thresholds and windows are application constructor settings. Both startup factories use the same default-rule construction, including any supplied collector-failure policy.
+`RuntimePersistence(..., detection_rules=None)` selects the shared `default_rules()` registry containing ASSET-001, OPS-001, NET-001/002/003, and AUTH-001/002. Supplying a rule sequence replaces that default registry, and an empty sequence disables rule evaluation.
+
+`default_rules(activity_rules=(ActivityRule(...), ...))` overrides selected activity policies while preserving registry order and all other defaults. Duplicate IDs and values other than `ActivityRule` are rejected. Startup, import, and host-watch CLI workflows expose these settings through `--activity-rule RULE=COUNT/SECONDS`. Both runtime factories accept `activity_rules` for Python callers. `HostMonitor` materializes an optional `detection_rules` iterable once and reuses it across connection recovery. Policy changes affect later evaluation and explicit replay. Stored findings retain their original settings, evidence, and resolution state.
 
 `ActivityRule` implements the five traffic/authentication/denial policies against explicitly validated canonical evidence. Distinct-value queries select one newest representative per port, destination, or source before applying the threshold limit. `RuntimePersistence.ingest_security_event()` accepts a validated event in the configured scope, preserves explicit associations, commits canonical evidence, and dispatches isolated detection evaluation. Import callers own canonical ingestion errors. [Activity contracts and default policies](activity-evidence.md)
 

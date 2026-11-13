@@ -43,6 +43,8 @@ Collector errors cover collection, presence processing, and publication stages. 
 
 The following version-1 rules use fixed UTC windows and exact scope/source/collector grouping. Default windows are 300 seconds. Counts, windows, sensor labels, grouping values, and rule versions qualify finding identity. `ActivityRule(rule_id, threshold=..., window_seconds=...)` supports thresholds from 1 through 500 and windows from 1 through 86400 seconds. The default registry supplies the thresholds below. [Evidence contract and import](../architecture/activity-evidence.md)
 
+Operators can tune individual policies with repeated `--activity-rule RULE=COUNT/SECONDS` flags on `start`, `bot start`, `ingest`, and `host-watch`. For example, `--activity-rule AUTH-001=3/60` requires three failures in a fixed 60-second UTC window. Repeated IDs are rejected. Use consistent policies across writers and record settings during lab validation. A changed threshold or window has a separate finding identity. [CLI configuration](../commands.md#local-cli)
+
 | Rule | Evidence and grouping | Default threshold | False positives and response | Controlled validation |
 | --- | --- | --- | --- | --- |
 | NET-001, network scan | Distinct destination ports for one source IP, destination IP, and transport | 10 | Authorized scanning and service discovery. Verify the source owner and target services | Repeated traffic to one port stays below threshold. A second distinct port completes a configured threshold of 2 |

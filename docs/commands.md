@@ -2,6 +2,11 @@
 
 ## Local CLI
 
+The [Docker deployment](deployment/docker.md) runs the same commands from an
+installed package. Mounted journals use `--journal-directory /host/journal` on
+`host-snapshot` or `host-watch`. The integrated runtime and watcher both close
+owned services/storage on SIGTERM.
+
 After [installation](development/contributing.md), `sentinel` and `python -m scripts.sentinel` expose the same interface:
 
 ```text
@@ -28,6 +33,10 @@ sentinel prune-host-history ssh --scope lab --collector-id pi5
 `host-watch` provides explicit periodic collection. Preview reports health without opening storage. `--apply` enables ingestion with a bounded process-local retry buffer. Defaults are a 60-second wait after each poll and 5,000 pending events. `--polls` bounds an acceptance run, and shutdown reports unsaved events. Optional sources retain their unconfigured status. [Watch lifecycle and loss limits](monitoring/host-telemetry.md#periodic-watching)
 
 Both startup commands accept `--collector-failure-threshold` from 1 through 500 and `--collector-failure-window` from 1 through 86400 seconds. Defaults are 3 failures in a fixed 300-second UTC window. These options configure OPS-001 findings for that process. A changed policy has a distinct deduplication identity and can create another finding for retained failures. Invalid values fail before configuration loading or runtime startup. [Rule policy](monitoring/detection-rules.md)
+
+`start`, `bot start`, `ingest`, and `host-watch` also accept repeated `--activity-rule RULE=COUNT/SECONDS` options for NET-001, NET-002, NET-003, AUTH-001, and AUTH-002. Counts accept 1 through 500 and windows accept 1 through 86400 seconds. Each rule ID can appear once. For example, `--activity-rule AUTH-001=3/60 --activity-rule AUTH-002=2/300` tunes both authentication policies. Other rules retain their defaults. Invalid or repeated IDs fail before configuration loading, input reading, storage creation, or source collection. Preview still performs validation without persistence.
+
+Policies apply to the current process or import. Use the same settings across writers intended to share a policy. Thresholds and windows qualify finding identity, so changed settings can create additional findings when evidence is explicitly replayed. Existing findings and resolution audits retain their original policy and state.
 
 Local `devices` reads a new process-local registry, normally empty. `--refresh` performs one ZTE poll; it does not query durable inventory or another running process. `--online`, `--offline`, and `--json` control output. Notification tests send real messages; providers are `discord`, `telegram`, or `all`.
 
@@ -78,6 +87,12 @@ Event type filters use serialized values: `NEW_DEVICE`, `DEVICE_ONLINE`, `DEVICE
 See [storage](architecture/persistent-storage.md) for restart behavior and [troubleshooting](troubleshooting/common-issues.md).
 
 ## Detection Findings
+
+For offline review of a labelled dataset, run `python -m scripts.evaluate_activity observations.jsonl labels.json --scope lab`. It compares exact expected activity-finding counts using a separate in-memory database for each scenario. It loads no environment configuration and never connects to deployed storage. Optional `--activity-rule RULE=COUNT/SECONDS` overrides use the existing bounds. [Labels, reports, and limitations](development/labelled-activity-evaluation.md)
+
+For a controlled acceptance run after deploying the script, use `python -m scripts.validate_detection --scope lab`. Add `--apply` to persist its 57 labelled synthetic records and check all five default activity rules, negative controls, evidence, and connection-restart replay. Each run retains its test evidence and findings under a unique collector label. Preview opens no storage. [Acceptance boundaries and expected results](development/milestone-3-acceptance.md#repeatable-controlled-activity-check)
+
+For controlled recovery checks, use `python -m scripts.validate_host_recovery --scope lab`. Add `--apply` to exercise six process-local fault scenarios against configured storage. Expected results are 27 retained synthetic records, three deliberate buffer drops, and five findings. Run it as a separate process. [Recovery cases and limits](development/milestone-3-acceptance.md#controlled-recovery-check)
 
 The integrated runtime exposes `/findings` through the shared allowlisted command handler and native Discord registration. It queries the runtime's configured network scope and defaults to five open findings. Limits accept 1 through 5 to keep both platform responses bounded. Status accepts `open`, `resolved`, or `all`.
 

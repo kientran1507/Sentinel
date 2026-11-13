@@ -8,8 +8,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from scripts.sentinel import main
+from services.detection import ActivityRule, default_rules
 from services.storage import DetectionRepository, SecurityEventRepository, SQLiteStorage
-from services.telemetry.host import HostCollection, parse_ssh_record
+from services.telemetry.commands import MAX_OUTPUT_BYTES
+from services.telemetry.host import HostCollection, collect_host, parse_ssh_record
 from services.telemetry.monitor import HostMonitor
 from tests.test_host_telemetry import journal_record
 
@@ -20,6 +22,13 @@ def ssh_events():
 
 
 class TestHostMonitor(unittest.TestCase):
+    def test_existing_injected_collectors_keep_their_original_keyword_contract(self):
+        def collect(source, *, scope, collector, host_ip, ssh_port, lookback_minutes, limit):
+            return HostCollection(source, "available")
+
+        monitor = HostMonitor(("ssh",), scope="lab", collector="pi5", collect=collect)
+        self.assertEqual(monitor.poll_once().sources[0].status, "available")
+
     def test_preview_does_not_create_storage_or_queue_events(self):
         collect = Mock(return_value=HostCollection("ssh", "available", ssh_events()))
         monitor = HostMonitor(("ssh",), scope="lab", collector="pi5", collect=collect)
@@ -73,6 +82,9 @@ class TestHostMonitor(unittest.TestCase):
         rows = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual(rows[-1]["state"], "stopped")
         self.assertEqual(rows[-1]["completed_polls"], 2)
+        self.assertEqual(rows[-1]["source_status_counts"], {"unavailable": 2})
+        self.assertEqual((rows[-1]["accepted_count"], rows[-1]["dropped_count"], rows[-1]["rejected_count"]),
+                         (0, 0, 0))
 
     def test_cli_keyboard_interrupt_closes_owned_resources(self):
         output = StringIO()
@@ -125,10 +137,156 @@ class TestHostMonitor(unittest.TestCase):
 
 
 class HostMonitorContract:
-    def host_monitor(self, *, collect=None, pending_limit=5000):
+    def export_monitor(self, records, *, limit=500):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "ssh.jsonl"
+        path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
+
+        def collect(source, **options):
+            return collect_host(source, input_path=path, **options)
+
+        monitor, storage = self.host_monitor(collect=collect, limit=limit)
+        return monitor, path
+
+    def test_saturated_export_recovers_retained_history_after_explicit_bound_increase(self):
+        monitor, path = self.export_monitor([journal_record(number) for number in range(6)], limit=4)
+        original = path.read_bytes()
+        first = monitor.poll_once()
+        self.assertEqual((first.sources[0].status, first.sources[0].reason), ("partial", "record_limit"))
+        self.assertEqual((first.accepted_count, first.pending_count, first.dropped_count), (4, 0, 0))
+        self.assertEqual(DetectionRepository(self.storage).query(network_scope="lab"), [])
+        self.assertEqual(path.read_bytes(), original)
+
+        # Only this test's reader bound changes; the source and event identities stay fixed.
+        monitor.options["limit"] = 10
+        recovered = monitor.poll_once()
+        self.assertEqual((recovered.sources[0].status, recovered.accepted_count, recovered.pending_count),
+                         ("available", 6, 0))
+        self.assertEqual(len(SecurityEventRepository(self.storage).query(network_scope="lab")), 6)
+        finding = DetectionRepository(self.storage).query(network_scope="lab")[0]
+        state = DetectionRepository(self.storage).get_state(finding.finding_id)
+        evidence = DetectionRepository(self.storage).list_evidence(finding.finding_id, network_scope="lab")
+        self.assertEqual((finding.rule_id, len(evidence)), ("AUTH-001", 5))
+        self.assertTrue(all(event is not None for _, event in evidence))
+        monitor.close()
+        self.assertEqual(monitor.poll_once().accepted_count, 6)
+        self.assertEqual(DetectionRepository(self.storage).query(network_scope="lab"), [finding])
+        self.assertEqual(DetectionRepository(self.storage).get_state(finding.finding_id), state)
+        self.assertEqual(DetectionRepository(self.storage).list_evidence(finding.finding_id, network_scope="lab"), evidence)
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_available_tail_does_not_recover_records_that_have_expired_from_source(self):
+        records = [journal_record(number) for number in range(6)]
+        monitor, path = self.export_monitor(records, limit=4)
+        self.assertEqual(monitor.poll_once().sources[0].status, "partial")
+        # Simulate source retention removing the two unread oldest records.
+        path.write_text("\n".join(json.dumps(record) for record in records[-4:]), encoding="utf-8")
+        later = monitor.poll_once()
+        self.assertEqual((later.sources[0].status, later.accepted_count, later.dropped_count, later.pending_count),
+                         ("available", 4, 0, 0))
+        stored = SecurityEventRepository(self.storage).query(network_scope="lab")
+        self.assertEqual(len(stored), 4)
+        for record in records[:2]:
+            missing = parse_ssh_record(record, scope="lab", collector="pi5", host_ip="198.51.100.5")
+            self.assertIsNone(SecurityEventRepository(self.storage).get(missing.event_id))
+        self.assertEqual(DetectionRepository(self.storage).query(network_scope="lab"), [])
+
+    def test_byte_limited_export_recovers_after_source_restoration(self):
+        records = [journal_record(number) for number in range(5)]
+        monitor, path = self.export_monitor(records)
+        retained = path.read_bytes()
+        path.write_bytes(b" " * (MAX_OUTPUT_BYTES + 1))
+        first = monitor.poll_once()
+        self.assertEqual((first.sources[0].status, first.sources[0].reason), ("unavailable", "output_limit"))
+        self.assertEqual((first.accepted_count, first.pending_count, first.dropped_count), (0, 0, 0))
+        self.assertEqual(SecurityEventRepository(self.storage).query(network_scope="lab"), [])
+        path.write_bytes(retained)
+        recovered = monitor.poll_once()
+        self.assertEqual((recovered.sources[0].status, recovered.storage_status, recovered.accepted_count),
+                         ("available", "healthy", 5))
+        self.assertEqual(len(SecurityEventRepository(self.storage).query(network_scope="lab")), 5)
+        self.assertEqual(len(DetectionRepository(self.storage).query(network_scope="lab")), 1)
+        self.assertEqual(path.read_bytes(), retained)
+
+    def test_cli_summary_retains_loss_after_later_healthy_poll(self):
+        events = ssh_events()
+        output = StringIO()
+        reports = [HostCollection("ssh", "partial", events, rejected=1, reason="invalid_records"),
+                   HostCollection("ssh", "available", events[-2:])]
+        with patch("scripts.sentinel.load_dotenv"), \
+                patch("scripts.sentinel.create_storage", side_effect=self.independent_storage), \
+                patch("scripts.sentinel.collect_host", side_effect=reports), \
+                patch("scripts.sentinel.time.sleep"):
+            code = main(["host-watch", "ssh", "--scope", "lab", "--collector-id", "pi5",
+                         "--pending-limit", "2", "--polls", "2", "--apply"], output=output)
+        self.assertEqual(code, 0)
+        rows = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(rows[1]["dropped_count"], 0)
+        summary = rows[-1]
+        self.assertEqual((summary["completed_polls"], summary["accepted_count"],
+                          summary["dropped_count"], summary["rejected_count"], summary["pending_count"]),
+                         (2, 4, 3, 1, 0))
+        self.assertEqual(summary["source_status_counts"], {"partial": 1, "available": 1})
+        self.assertEqual(len(SecurityEventRepository(self.storage).query(network_scope="lab")), 2)
+
+    def test_cli_interrupted_summary_retains_unavailable_source_reports(self):
+        output = StringIO()
+        reports = [HostCollection("ssh", "unavailable", reason="command_failed"),
+                   HostCollection("ssh", "available", ssh_events())]
+        waits = [None, KeyboardInterrupt()]
+        with patch("scripts.sentinel.load_dotenv"), \
+                patch("scripts.sentinel.create_storage", side_effect=self.independent_storage), \
+                patch("scripts.sentinel.collect_host", side_effect=reports), \
+                patch("scripts.sentinel.time.sleep", side_effect=waits):
+            code = main(["host-watch", "ssh", "--scope", "lab", "--collector-id", "pi5",
+                         "--apply"], output=output)
+        self.assertEqual(code, 0)
+        summary = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual(summary["source_status_counts"], {"unavailable": 1, "available": 1})
+        self.assertEqual((summary["accepted_count"], summary["dropped_count"], summary["pending_count"]), (5, 0, 0))
+        self.assertEqual(len(SecurityEventRepository(self.storage).query(network_scope="lab")), 5)
+
+    def test_watch_keeps_custom_policy_after_connection_failure_and_replay(self):
+        storage = self.independent_storage()
+        events = ssh_events()[:2]
+        rules = default_rules(activity_rules=(ActivityRule("AUTH-001", 2, 60),))
+        monitor = HostMonitor(
+            ("ssh",), scope="lab", collector="pi5", storage_factory=lambda: storage,
+            collect=Mock(return_value=HostCollection("ssh", "available", events)),
+            detection_rules=(rule for rule in rules),
+        )
+        self.addCleanup(monitor.close)
+        with patch.object(storage, "initialize", side_effect=RuntimeError("injected failure")):
+            self.assertEqual(monitor.poll_once().pending_count, 2)
+        self.assertEqual(monitor.poll_once().accepted_count, 2)
+        monitor.close()
+        self.assertEqual(monitor.poll_once().accepted_count, 2)
+        findings = DetectionRepository(self.storage).query()
+        self.assertEqual(len(findings), 1)
+        self.assertEqual((findings[0].rule_id, findings[0].threshold, findings[0].window_seconds),
+                         ("AUTH-001", 2, 60))
+
+    def test_host_watch_cli_applies_custom_authentication_policy(self):
+        storage = self.independent_storage()
+        with patch("scripts.sentinel.load_dotenv"), \
+                patch("scripts.sentinel.create_storage", return_value=storage), \
+                patch("scripts.sentinel.collect_host",
+                      return_value=HostCollection("ssh", "available", ssh_events()[:2])):
+            self.assertEqual(main([
+                "host-watch", "ssh", "--scope", "lab", "--collector-id", "pi5",
+                "--polls", "1", "--apply", "--activity-rule", "AUTH-001=2/60",
+            ], output=StringIO()), 0)
+        self.assertFalse(storage.is_initialized)
+        findings = DetectionRepository(self.storage).query()
+        self.assertEqual(len(findings), 1)
+        self.assertEqual((findings[0].rule_id, findings[0].threshold, findings[0].window_seconds),
+                         ("AUTH-001", 2, 60))
+
+    def host_monitor(self, *, collect=None, pending_limit=5000, limit=500):
         storage = self.independent_storage()
         monitor = HostMonitor(("ssh",), scope="lab", collector="pi5", host_ip="198.51.100.5",
-                              pending_limit=pending_limit, storage_factory=lambda: storage,
+                              pending_limit=pending_limit, limit=limit, storage_factory=lambda: storage,
                               collect=collect or Mock(return_value=HostCollection("ssh", "available", ssh_events())))
         self.addCleanup(monitor.close)
         return monitor, storage

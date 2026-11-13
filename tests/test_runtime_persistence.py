@@ -14,7 +14,7 @@ from services.alerting.engine import AlertEngine, AlertType, Severity
 from services.alerting.notifications import NotificationManager, NotificationProvider
 from services.discovery.event_bus import EventBus
 from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
-from services.detection import CollectorFailureRule, default_rules
+from services.detection import ActivityRule, CollectorFailureRule, default_rules
 from services.storage import (
     AlertRepository,
     DeviceEventRepository,
@@ -69,14 +69,15 @@ class TestRuntimePersistence(unittest.TestCase):
             with patch.dict(os.environ, environment, clear=False):
                 for policy in (None, CollectorFailureRule(threshold=5, window_seconds=60)):
                     with self.subTest(policy=policy):
-                        runtime = create_runtime(collector_failure_rule=policy)
+                        activity_rules = (ActivityRule("AUTH-001", 2, 60),)
+                        runtime = create_runtime(collector_failure_rule=policy, activity_rules=activity_rules)
                         try:
                             self.assertTrue(runtime.storage.is_initialized)
                             self.assertEqual(runtime.monitor.on_health.__name__, "persist_collector_health")
                             self.assertIs(runtime.monitor.on_health.__self__.storage, runtime.storage)
                             self.assertIs(runtime.command_service.handler.detection_repository.storage, runtime.storage)
                             self.assertEqual(runtime.monitor.on_health.__self__.detection_engine.registry.rules,
-                                             default_rules(collector_failure_rule=policy))
+                                             default_rules(collector_failure_rule=policy, activity_rules=activity_rules))
                             self.assertTrue(Path(path).is_file())
                         finally:
                             runtime.stop()

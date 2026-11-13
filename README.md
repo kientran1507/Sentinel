@@ -26,6 +26,14 @@ The installed `sentinel start` command is equivalent. The runtime loads the repo
 
 ## Configuration
 
+Linux Docker packaging provides one integrated runtime and an independent SSH
+collector, using an existing PostgreSQL deployment. See the
+[Docker deployment guide](docs/deployment/docker.md) for builds, mounted
+configuration, journal access, acceptance, and rollback. Runtime image build,
+bounded SSH collection, integrated runtime operation, and controlled restart
+acceptance passed on the Pi. Sustained workload and live activity-source checks
+remain open.
+
 | Variable | Use |
 | --- | --- |
 | `ZTE_ROUTER_URL` | Router base URL |
