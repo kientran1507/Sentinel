@@ -205,19 +205,25 @@ def collect_host(source, *, scope, collector, host_ip=None, ssh_port=22, lookbac
                         events.append(event)
                 except (ValueError, TypeError, KeyError, OverflowError):
                     rejected += 1
-            partial = rejected > 0 or len(lines) > limit
-            return HostCollection(source, "partial" if partial else "available", tuple(events), ignored, rejected,
-                                  "record_limit" if len(lines) > limit else "invalid_records" if rejected else None)
+            reason = None
+            if len(lines) > limit:
+                reason = "record_limit"
+            elif rejected:
+                reason = "invalid_records"
+            return HostCollection(source, "partial" if reason else "available", tuple(events), ignored, rejected, reason)
         if source == "interfaces":
             events = tuple(islice(parse_interfaces(json.loads(output), **context), limit + 1))
         elif source == "nftables":
             events = tuple(islice(parse_nftables(json.loads(output), **context), limit + 1))
         else:
             events = tuple(islice(parse_iptables(output, source=source, **context), limit + 1))
-        return HostCollection(source, "partial" if len(events) > limit else "available", events[:limit],
-                              reason="record_limit" if len(events) > limit else None)
+        truncated = len(events) > limit
+        return HostCollection(source, "partial" if truncated else "available", events[:limit],
+                              reason="record_limit" if truncated else None)
     except SourceUnavailable as exc:
-        reason = str(exc) if str(exc) in {"command_missing", "output_limit", "command_failed", "command_diagnostic"} else "source_unavailable"
+        reason = str(exc)
+        if reason not in {"command_missing", "output_limit", "command_failed", "command_diagnostic"}:
+            reason = "source_unavailable"
         return HostCollection(source, "unavailable", reason=reason)
     except Exception as exc:
         return HostCollection(source, "unavailable", reason=type(exc).__name__)

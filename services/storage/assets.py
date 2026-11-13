@@ -241,8 +241,8 @@ class AssetRepository:
                 asset.device_type,
                 asset.trust_level,
                 asset.status,
-                self._format_timestamp(asset.first_seen),
-                self._format_timestamp(asset.last_seen),
+                format_timestamp(asset.first_seen),
+                format_timestamp(asset.last_seen),
                 json.dumps(asset.metadata, sort_keys=True),
                 asset.network_scope,
                 int(asset.is_provisional),
@@ -459,15 +459,7 @@ class AssetRepository:
         return ensure_utc(value)
 
     @staticmethod
-    def _format_timestamp(value: Optional[datetime]) -> Optional[str]:
-        return format_timestamp(value)
-
-    @staticmethod
-    def _parse_timestamp(value: str) -> datetime:
-        return parse_timestamp(value)
-
-    @classmethod
-    def _asset_from_row(cls, row) -> Asset:
+    def _asset_from_row(row) -> Asset:
         if row is None:
             raise ValueError("asset row not found")
         return Asset(
@@ -478,15 +470,15 @@ class AssetRepository:
             device_type=row["device_type"],
             trust_level=row["trust_level"],
             status=row["status"],
-            first_seen=cls._parse_timestamp(row["first_seen"]),
-            last_seen=cls._parse_timestamp(row["last_seen"]),
+            first_seen=parse_timestamp(row["first_seen"]),
+            last_seen=parse_timestamp(row["last_seen"]),
             metadata=json.loads(row["metadata"] or "{}"),
             network_scope=row["network_scope"],
             is_provisional=bool(row["is_provisional"]),
         )
 
-    @classmethod
-    def _address_from_row(cls, row) -> AssetAddress:
+    @staticmethod
+    def _address_from_row(row) -> AssetAddress:
         if row is None:
             raise ValueError("asset address row not found")
         return AssetAddress(
@@ -495,9 +487,9 @@ class AssetRepository:
             network_scope=row["network_scope"],
             interface=row["interface"],
             source=row["source"],
-            first_seen=cls._parse_timestamp(row["first_seen"]),
-            last_seen=cls._parse_timestamp(row["last_seen"]),
-            assignment_started=cls._parse_timestamp(row["assignment_started"]) if row["assignment_started"] else None,
-            assignment_ended=cls._parse_timestamp(row["assignment_ended"]) if row["assignment_ended"] else None,
+            first_seen=parse_timestamp(row["first_seen"]),
+            last_seen=parse_timestamp(row["last_seen"]),
+            assignment_started=parse_timestamp(row["assignment_started"]) if row["assignment_started"] else None,
+            assignment_ended=parse_timestamp(row["assignment_ended"]) if row["assignment_ended"] else None,
             metadata=json.loads(row["metadata"] or "{}"),
         )

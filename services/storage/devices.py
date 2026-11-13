@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Mapping, Optional
 
 from services.discovery.models import DiscoveredDevice, ZTEDevice
 
 from .base import Storage
-from .timestamps import ensure_utc
+from .timestamps import ensure_utc, format_required_timestamp as format_timestamp, parse_timestamp
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class DeviceRepository:
             existing = self._find_existing(connection, record)
             if existing:
                 identity_key = existing["identity_key"]
-                first_seen = self._parse_timestamp(existing["first_seen"])
+                first_seen = parse_timestamp(existing["first_seen"])
                 connection.execute(
                     """
                     UPDATE devices
@@ -83,7 +83,7 @@ class DeviceRepository:
                         record.ip_address,
                         record.hostname,
                         record.discovery_source,
-                        self._format_timestamp(record.last_seen),
+                        format_timestamp(record.last_seen),
                         record.status,
                         json.dumps(record.metadata, sort_keys=True),
                         identity_key,
@@ -114,8 +114,8 @@ class DeviceRepository:
                     record.ip_address,
                     record.hostname,
                     record.discovery_source,
-                    self._format_timestamp(record.first_seen),
-                    self._format_timestamp(record.last_seen),
+                    format_timestamp(record.first_seen),
+                    format_timestamp(record.last_seen),
                     record.status,
                     json.dumps(record.metadata, sort_keys=True),
                 ),
@@ -135,7 +135,7 @@ class DeviceRepository:
             if mac_address:
                 row = connection.execute(
                     "SELECT * FROM devices WHERE mac_address = ?",
-                    (self._normalize_mac(mac_address),),
+                    (normalize_mac(mac_address),),
                 ).fetchone()
             else:
                 row = None
@@ -178,9 +178,9 @@ class DeviceRepository:
             return device
 
         if isinstance(device, DiscoveredDevice):
-            mac_address = self._normalize_mac(device.mac_address)
+            mac_address = normalize_mac(device.mac_address)
             ip_address = device.ip_address
-            timestamp = self._ensure_utc(device.discovered_at)
+            timestamp = ensure_utc(device.discovered_at)
             return StoredDevice(
                 identity_key=device_identity_key(mac_address, ip_address),
                 mac_address=mac_address,
@@ -193,7 +193,7 @@ class DeviceRepository:
                 metadata=dict(metadata or {}),
             )
 
-        mac_address = self._normalize_mac(device.mac_address)
+        mac_address = normalize_mac(device.mac_address)
         ip_address = device.ip_address
         device_metadata = {
             "interface": device.interface,
@@ -209,36 +209,22 @@ class DeviceRepository:
             ip_address=ip_address,
             hostname=device.hostname,
             discovery_source=str(device_metadata.pop("discovery_source", "zte")),
-            first_seen=self._ensure_utc(device.first_seen),
-            last_seen=self._ensure_utc(device.last_seen),
+            first_seen=ensure_utc(device.first_seen),
+            last_seen=ensure_utc(device.last_seen),
             status=device.status or "unknown",
             metadata=device_metadata,
         )
 
-    _normalize_mac = staticmethod(normalize_mac)
-
     @staticmethod
-    def _ensure_utc(value: datetime) -> datetime:
-        return ensure_utc(value)
-
-    @classmethod
-    def _format_timestamp(cls, value: datetime) -> str:
-        return cls._ensure_utc(value).isoformat()
-
-    @classmethod
-    def _parse_timestamp(cls, value: str) -> datetime:
-        return cls._ensure_utc(datetime.fromisoformat(value))
-
-    @classmethod
-    def _from_row(cls, row) -> StoredDevice:
+    def _from_row(row) -> StoredDevice:
         return StoredDevice(
             identity_key=row["identity_key"],
             mac_address=row["mac_address"],
             ip_address=row["ip_address"],
             hostname=row["hostname"],
             discovery_source=row["discovery_source"],
-            first_seen=cls._parse_timestamp(row["first_seen"]),
-            last_seen=cls._parse_timestamp(row["last_seen"]),
+            first_seen=parse_timestamp(row["first_seen"]),
+            last_seen=parse_timestamp(row["last_seen"]),
             status=row["status"],
             metadata=json.loads(row["metadata"]),
         )

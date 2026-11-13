@@ -13,19 +13,19 @@ class TestHostnameResolver(unittest.TestCase):
         resolver = HostnameResolver(timeout=0.1)
 
         with patch("socket.gethostbyaddr", return_value=("Melikecatto", [], ["192.168.2.21"])):
-            self.assertEqual(resolver._lookup_reverse_dns("192.168.2.21"), "Melikecatto")
+            self.assertEqual(resolver._lookup_reverse_dns_detail("192.168.2.21")["hostname"], "Melikecatto")
 
     def test_reverse_dns_rejects_ip_address_hostname(self):
         resolver = HostnameResolver(timeout=0.1)
 
         with patch("socket.gethostbyaddr", return_value=("192.168.2.3", [], ["192.168.2.3"])):
-            self.assertIsNone(resolver._lookup_reverse_dns("192.168.2.3"))
+            self.assertIsNone(resolver._lookup_reverse_dns_detail("192.168.2.3")["hostname"])
 
     def test_reverse_dns_no_ptr_record(self):
         resolver = HostnameResolver(timeout=0.1)
 
         with patch("socket.gethostbyaddr", side_effect=socket.herror("no PTR")):
-            self.assertIsNone(resolver._lookup_reverse_dns("192.168.2.2"))
+            self.assertIsNone(resolver._lookup_reverse_dns_detail("192.168.2.2")["hostname"])
 
     def test_netbios_parser_prefers_workstation_name(self):
         output = """
@@ -59,7 +59,7 @@ class TestHostnameResolver(unittest.TestCase):
         with patch("platform.system", return_value="Windows"), patch("shutil.which", return_value="nbtstat"), patch(
             "subprocess.run", return_value=completed
         ) as run:
-            self.assertEqual(resolver._lookup_netbios("192.168.2.80"), "RASPBERRYPI")
+            self.assertEqual(resolver._lookup_netbios_detail("192.168.2.80")["hostname"], "RASPBERRYPI")
 
         run.assert_called_once_with(
             ["nbtstat", "-A", "192.168.2.80"],
@@ -94,7 +94,7 @@ class TestHostnameResolver(unittest.TestCase):
             "_browse_mdns",
             side_effect=[["_workstation._tcp.local."], ["Raspberry Pi._workstation._tcp.local."]],
         ):
-            self.assertEqual(resolver._lookup_mdns("192.168.2.80"), "raspberrypi.local")
+            self.assertEqual(resolver._lookup_mdns_detail("192.168.2.80")["hostname"], "raspberrypi.local")
 
         fake_zc.close.assert_called_once()
 
@@ -124,7 +124,7 @@ class TestHostnameResolver(unittest.TestCase):
         resolver._lookup_netbios_detail = Mock(return_value=resolver._attempt("success", "NETBIOS"))
         resolver._lookup_mdns_detail = Mock(return_value=resolver._attempt("success", "mdns.local"))
 
-        self.assertEqual(resolver._resolve_hostname("192.168.2.50"), "device.example.local")
+        self.assertEqual(resolver.resolve_with_details("192.168.2.50")["hostname"], "device.example.local")
         resolver._lookup_netbios_detail.assert_not_called()
         resolver._lookup_mdns_detail.assert_not_called()
 
@@ -134,7 +134,7 @@ class TestHostnameResolver(unittest.TestCase):
         resolver._lookup_netbios_detail = Mock(return_value=resolver._attempt("success", "NETBIOS"))
         resolver._lookup_mdns_detail = Mock(return_value=resolver._attempt("success", "mdns.local"))
 
-        self.assertEqual(resolver._resolve_hostname("192.168.2.50"), "NETBIOS")
+        self.assertEqual(resolver.resolve_with_details("192.168.2.50")["hostname"], "NETBIOS")
         resolver._lookup_mdns_detail.assert_not_called()
 
     def test_resolver_priority_mdns_after_ptr_and_netbios_failure(self):
@@ -143,7 +143,7 @@ class TestHostnameResolver(unittest.TestCase):
         resolver._lookup_netbios_detail = Mock(return_value=resolver._attempt("not_found"))
         resolver._lookup_mdns_detail = Mock(return_value=resolver._attempt("success", "raspberrypi.local"))
 
-        self.assertEqual(resolver._resolve_hostname("192.168.2.80"), "raspberrypi.local")
+        self.assertEqual(resolver.resolve_with_details("192.168.2.80")["hostname"], "raspberrypi.local")
 
     def test_failure_handling_returns_none(self):
         resolver = HostnameResolver()
@@ -152,7 +152,7 @@ class TestHostnameResolver(unittest.TestCase):
         resolver._lookup_mdns_detail = Mock(side_effect=RuntimeError("mdns failed"))
         resolver._lookup_llmnr_detail = Mock(side_effect=RuntimeError("llmnr failed"))
 
-        self.assertIsNone(resolver._resolve_hostname("192.168.2.100"))
+        self.assertIsNone(resolver.resolve_with_details("192.168.2.100")["hostname"])
 
     def test_resolve_with_details_returns_attempts(self):
         resolver = HostnameResolver()
@@ -176,8 +176,8 @@ class TestHostnameResolver(unittest.TestCase):
             "_discover_mdns_hostnames",
             return_value={"192.168.2.12": "android.local", "192.168.2.80": "raspberrypi.local"},
         ) as discover, patch("services.discovery.hostname_resolver._ZEROCONF_AVAILABLE", True):
-            self.assertEqual(resolver._lookup_mdns("192.168.2.12"), "android.local")
-            self.assertEqual(resolver._lookup_mdns("192.168.2.80"), "raspberrypi.local")
+            self.assertEqual(resolver._lookup_mdns_detail("192.168.2.12")["hostname"], "android.local")
+            self.assertEqual(resolver._lookup_mdns_detail("192.168.2.80")["hostname"], "raspberrypi.local")
 
         discover.assert_called_once()
 

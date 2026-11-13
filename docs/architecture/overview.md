@@ -2,6 +2,8 @@
 
 Sentinel is a modular Python application for LAN discovery, ZTE H3601P presence monitoring, durable inventory, alerts, and authorized commands. The integrated runtime is one process, assembled in [scripts/sentinel.py](../../scripts/sentinel.py).
 
+CLI workflows share backend selection through `create_storage()`. The caller owns initialization and cleanup. ZTE polling workflows share router option validation through `router_options()`. ARP and ICMP scanners share target expansion while retaining separate probing and failure handling.
+
 ```text
 ZTECollector -> PersistingCollector -> PresenceTracker -> DeviceRegistry
                        |                    |

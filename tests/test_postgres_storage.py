@@ -26,12 +26,28 @@ from tests.test_findings_commands import FindingsCommandContract
 from tests.test_activity_detection import ActivityDetectionContract
 from tests.test_host_telemetry import HostTelemetryContract
 from tests.test_host_monitor import HostMonitorContract
+from tests.test_refactor_regressions import SnapshotSerializationContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, unittest.TestCase):
+class TestPostgreSQLStorage(
+    InventoryAcceptanceContract,
+    SecurityEventRepositoryContract,
+    SecurityEventIngestionContract,
+    DiscoveryEventIngestionContract,
+    RouterEventIngestionContract,
+    CollectorHealthIngestionContract,
+    DetectionRepositoryContract,
+    DetectionIngestionContract,
+    FindingsCommandContract,
+    ActivityDetectionContract,
+    HostTelemetryContract,
+    HostMonitorContract,
+    SnapshotSerializationContract,
+    unittest.TestCase,
+):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")

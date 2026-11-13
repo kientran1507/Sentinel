@@ -247,25 +247,27 @@ def main(argv: Optional[Iterable[str]] = None, *, registry: Optional[DeviceRegis
     manager = NotificationManager()
     manager.add_from_environment()
     results = manager.test(args.provider)
-    for provider in ("discord", "telegram") if args.provider == "all" else (args.provider,):
+    providers = ("discord", "telegram") if args.provider == "all" else (args.provider,)
+    for provider in providers:
         if provider in results:
             print(f"{provider.capitalize()}: {'PASS' if results[provider] else 'FAIL'}", file=output)
         else:
             print(f"{provider.capitalize()}: FAIL (not configured)", file=output)
-    return 0 if results and all(results.get(provider, False) for provider in (("discord", "telegram") if args.provider == "all" else (args.provider,))) else 1
+    return 0 if results and all(results.get(provider, False) for provider in providers) else 1
+
+
+def create_storage():
+    return PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
 
 
 def host_watch(args, *, output):
     sources = (*SOURCES, *OPTIONAL_SOURCES) if args.source == "all" else (args.source,)
 
-    def storage_factory():
-        return PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
-
     try:
         monitor = HostMonitor(
             sources, scope=args.scope, collector=args.collector_id, host_ip=args.host_ip,
             ssh_port=args.ssh_port, lookback_minutes=args.lookback_minutes, limit=args.limit,
-            pending_limit=args.pending_limit, storage_factory=storage_factory if args.apply else None,
+            pending_limit=args.pending_limit, storage_factory=create_storage if args.apply else None,
             collect=collect_host,
         )
     except ValueError:
@@ -339,7 +341,7 @@ def prune_host_history(args, *, output):
     exit_code = 0
     try:
         load_dotenv()
-        storage = PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
+        storage = create_storage()
         storage.initialize()
         result = SecurityEventRetention(storage).prune_before(
             datetime.now(timezone.utc) - timedelta(days=args.days), network_scope=args.scope,
@@ -378,7 +380,7 @@ def ingest_file(path, *, network_scope, apply=False, output=sys.stdout):
     exit_code = 0
     try:
         load_dotenv()
-        storage = PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
+        storage = create_storage()
         storage.initialize()
         persistence = RuntimePersistence(storage, network_scope=network_scope)
         for event in events:
@@ -399,22 +401,27 @@ def ingest_file(path, *, network_scope, apply=False, output=sys.stdout):
     return exit_code
 
 
-def refresh_registry() -> DeviceRegistry:
-    """Collect one snapshot through the existing monitor state machinery."""
+def router_options():
     required = ["ZTE_ROUTER_URL", "ZTE_USERNAME", "ZTE_PASSWORD"]
     missing = [key for key in required if not os.getenv(key)]
     if missing:
         raise RuntimeError("missing ZTE router configuration: " + ", ".join(missing))
+    return {
+        "url": os.environ["ZTE_ROUTER_URL"],
+        "username": os.environ["ZTE_USERNAME"],
+        "password": os.environ["ZTE_PASSWORD"],
+        "verify_tls": False,
+        "password_algorithm": "sha256_concat",
+        "rsa_public_key": os.getenv("ZTE_RSA_PUBLIC_KEY"),
+    }
+
+
+def refresh_registry() -> DeviceRegistry:
+    """Collect one snapshot through the existing monitor state machinery."""
+    options = router_options()
     registry = DeviceRegistry()
     tracker = PresenceTracker(registry)
-    client = ZTEH3601PClient(
-        url=os.environ["ZTE_ROUTER_URL"],
-        username=os.environ["ZTE_USERNAME"],
-        password=os.environ["ZTE_PASSWORD"],
-        verify_tls=False,
-        password_algorithm="sha256_concat",
-        rsa_public_key=os.getenv("ZTE_RSA_PUBLIC_KEY"),
-    )
+    client = ZTEH3601PClient(**options)
     monitor = ZTEMonitor(
         client=client,
         collector=ZTECollector(client),
@@ -426,12 +433,9 @@ def refresh_registry() -> DeviceRegistry:
 
 
 def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None) -> SentinelRuntime:
-    required = ["ZTE_ROUTER_URL", "ZTE_USERNAME", "ZTE_PASSWORD"]
-    missing = [key for key in required if not os.getenv(key)]
-    if missing:
-        raise RuntimeError("missing ZTE router configuration: " + ", ".join(missing))
+    options = router_options()
 
-    storage = PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
+    storage = create_storage()
     storage.initialize()
     try:
         persistence = RuntimePersistence(
@@ -448,14 +452,7 @@ def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None
         alert_engine = AlertEngine(notification_manager=alert_notifications, alert_history=alert_history)
         alert_engine.attach(event_bus)
 
-        client = ZTEH3601PClient(
-            url=os.environ["ZTE_ROUTER_URL"],
-            username=os.environ["ZTE_USERNAME"],
-            password=os.environ["ZTE_PASSWORD"],
-            verify_tls=False,
-            password_algorithm="sha256_concat",
-            rsa_public_key=os.getenv("ZTE_RSA_PUBLIC_KEY"),
-        )
+        client = ZTEH3601PClient(**options)
         monitor = ZTEMonitor(
             client=client,
             collector=PersistingCollector(ZTECollector(client), persistence),

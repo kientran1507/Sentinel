@@ -4,9 +4,10 @@ import json
 from datetime import datetime
 from typing import Any, Optional
 
-from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
+from services.discovery.models import DeviceEvent, DeviceEventType
 
 from .base import Storage
+from .device_snapshots import device_snapshot, device_from_snapshot
 from .devices import device_identity_key, normalize_mac
 from .timestamps import format_timestamp, parse_timestamp
 
@@ -71,10 +72,10 @@ class DeviceEventRepository:
             parameters.append(self._event_type_value(event_type))
         if start is not None:
             clauses.append("timestamp >= ?")
-            parameters.append(self._format_timestamp(start))
+            parameters.append(format_timestamp(start))
         if end is not None:
             clauses.append("timestamp < ?")
-            parameters.append(self._format_timestamp(end))
+            parameters.append(format_timestamp(end))
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         return self._list(
             "SELECT * FROM device_events" + where +
@@ -115,7 +116,7 @@ class DeviceEventRepository:
         return (
             event.event_id,
             cls._event_type_value(event.event_type),
-            cls._format_timestamp(event.timestamp),
+            format_timestamp(event.timestamp),
             device_identity,
             mac_address,
             event.ip_address,
@@ -123,31 +124,12 @@ class DeviceEventRepository:
             cls._json_value(event.previous_state),
             cls._json_value(event.current_state),
             cls._json_value(event.metadata) or "{}",
-            cls._json_value(cls._device_snapshot(event.device)),
+            cls._json_value(device_snapshot(event.device)),
         )
 
     @staticmethod
     def _event_type_value(event_type: DeviceEventType | str) -> str:
         return event_type.value if isinstance(event_type, DeviceEventType) else str(event_type)
-
-    @staticmethod
-    def _device_snapshot(device: Optional[ZTEDevice]) -> Optional[dict[str, Any]]:
-        if device is None:
-            return None
-        return {
-            "mac_address": device.mac_address,
-            "ip_address": device.ip_address,
-            "hostname": device.hostname,
-            "interface": device.interface,
-            "connection_type": device.connection_type,
-            "parent_mac": device.parent_mac,
-            "rssi": device.rssi,
-            "wireless": device.wireless,
-            "status": device.status,
-            "first_seen": DeviceEventRepository._format_timestamp(device.first_seen),
-            "last_seen": DeviceEventRepository._format_timestamp(device.last_seen),
-            "last_changed": DeviceEventRepository._format_timestamp(device.last_changed),
-        }
 
     @staticmethod
     def _json_value(value: Any) -> Optional[str]:
@@ -156,36 +138,13 @@ class DeviceEventRepository:
         return json.dumps(value, sort_keys=True)
 
     @staticmethod
-    def _format_timestamp(value: Optional[datetime]) -> Optional[str]:
-        return format_timestamp(value)
-
-    @staticmethod
-    def _parse_timestamp(value: str) -> datetime:
-        return parse_timestamp(value)
-
-    @classmethod
-    def _from_row(cls, row) -> DeviceEvent:
+    def _from_row(row) -> DeviceEvent:
         snapshot = json.loads(row["device_snapshot"]) if row["device_snapshot"] else None
-        device = None
-        if snapshot:
-            device = ZTEDevice(
-                mac_address=snapshot["mac_address"],
-                ip_address=snapshot["ip_address"],
-                hostname=snapshot["hostname"],
-                interface=snapshot["interface"],
-                connection_type=snapshot["connection_type"],
-                parent_mac=snapshot["parent_mac"],
-                rssi=snapshot["rssi"],
-                wireless=snapshot["wireless"],
-                status=snapshot["status"],
-                first_seen=cls._parse_timestamp(snapshot["first_seen"]),
-                last_seen=cls._parse_timestamp(snapshot["last_seen"]),
-                last_changed=cls._parse_timestamp(snapshot["last_changed"]),
-            )
+        device = device_from_snapshot(snapshot)
         return DeviceEvent(
             event_type=row["event_type"],
             mac_address=row["mac_address"] or "",
-            timestamp=cls._parse_timestamp(row["timestamp"]),
+            timestamp=parse_timestamp(row["timestamp"]),
             device=device,
             previous_state=json.loads(row["previous_state"]) if row["previous_state"] else None,
             current_state=json.loads(row["current_state"]) if row["current_state"] else None,

@@ -141,11 +141,8 @@ def parse_dhcp_clients_xml(
     if error_str and error_str.strip().lower() in ("sessiontimeout", "login", "unauthorized", "fail"):
         raise RuntimeError(f"DHCP endpoint returned session error: {error_str.strip()}")
 
-    def _matches_object(tag: str) -> bool:
-        return any(tag.startswith(prefix) for prefix in expected_ids)
-
-    has_host_obj = any(_matches_object(_strip_namespace(container.tag)) for container in root.iter())
-    if not has_host_obj:
+    containers = [container for container in root.iter() if _strip_namespace(container.tag).startswith(expected_ids)]
+    if not containers:
         expected = ", ".join(expected_ids)
         raise RuntimeError(
             f"DHCP endpoint returned unauthenticated or invalid XML response (missing {expected})"
@@ -153,22 +150,16 @@ def parse_dhcp_clients_xml(
 
     records: List[ZTEDHCPClient] = []
 
-    for container in root.iter():
-        tag = _strip_namespace(container.tag)
-        if not _matches_object(tag):
-            continue
-
+    for container in containers:
         instances = container.findall("./Instance")
         if not instances:
             continue
 
         # Style A: each Instance is a full device (multiple ParaName/ParaValue pairs).
-        multi_field_instances = [inst for inst in instances if len(_instance_fields(inst)) > 1]
+        fields = [_instance_fields(instance) for instance in instances]
+        multi_field_instances = [raw for raw in fields if len(raw) > 1]
         if multi_field_instances:
-            for instance in multi_field_instances:
-                raw = _instance_fields(instance)
-                if not raw:
-                    continue
+            for raw in multi_field_instances:
                 if not (_first(raw, "IPAddr", "IPAddress", "IP") or _first(raw, "MACAddr", "MACAddress", "MAC")):
                     continue
                 records.append(_dhcp_client_from_raw(raw))
@@ -176,8 +167,8 @@ def parse_dhcp_clients_xml(
 
         # Style B: each Instance carries a single field; aggregate under one OBJ.
         raw: Dict[str, str] = {}
-        for instance in instances:
-            raw.update(_instance_fields(instance))
+        for instance_fields in fields:
+            raw.update(instance_fields)
         if raw:
             records.append(_dhcp_client_from_raw(raw))
 

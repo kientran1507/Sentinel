@@ -5,9 +5,10 @@ from datetime import datetime
 from typing import Any, Optional
 
 from services.alerting.engine import Alert, AlertType, Severity
-from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
+from services.discovery.models import DeviceEvent
 
 from .base import Storage
+from .device_snapshots import device_snapshot, device_from_snapshot
 from .devices import device_identity_key, normalize_mac
 from .timestamps import format_timestamp, parse_timestamp
 
@@ -27,7 +28,7 @@ class AlertRepository:
             self._enum_value(alert.severity),
             alert.title,
             alert.message,
-            self._format_timestamp(alert.timestamp),
+            format_timestamp(alert.timestamp),
             device_identity_key(normalize_mac(event.mac_address), event.ip_address),
             event.event_id,
             json.dumps(self._event_to_dict(event), sort_keys=True),
@@ -91,10 +92,10 @@ class AlertRepository:
             parameters.append(self._enum_value(alert_type))
         if start is not None:
             clauses.append("timestamp >= ?")
-            parameters.append(self._format_timestamp(start))
+            parameters.append(format_timestamp(start))
         if end is not None:
             clauses.append("timestamp < ?")
-            parameters.append(self._format_timestamp(end))
+            parameters.append(format_timestamp(end))
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.storage.transaction() as connection:
             rows = connection.execute(
@@ -126,34 +127,17 @@ class AlertRepository:
 
     @classmethod
     def _event_to_dict(cls, event: DeviceEvent) -> dict[str, Any]:
-        device = event.device
-        device_snapshot = None
-        if device:
-            device_snapshot = {
-                "mac_address": device.mac_address,
-                "ip_address": device.ip_address,
-                "hostname": device.hostname,
-                "interface": device.interface,
-                "connection_type": device.connection_type,
-                "parent_mac": device.parent_mac,
-                "rssi": device.rssi,
-                "wireless": device.wireless,
-                "status": device.status,
-                "first_seen": cls._format_timestamp(device.first_seen),
-                "last_seen": cls._format_timestamp(device.last_seen),
-                "last_changed": cls._format_timestamp(device.last_changed),
-            }
         return {
             "event_id": event.event_id,
             "event_type": cls._enum_value(event.event_type),
             "mac_address": normalize_mac(event.mac_address),
             "ip_address": event.ip_address,
             "hostname": event.hostname,
-            "timestamp": cls._format_timestamp(event.timestamp),
+            "timestamp": format_timestamp(event.timestamp),
             "previous_state": event.previous_state,
             "current_state": event.current_state,
             "metadata": event.metadata,
-            "device": device_snapshot,
+            "device": device_snapshot(event.device) if event.device else None,
         }
 
     @staticmethod
@@ -161,36 +145,13 @@ class AlertRepository:
         return value.value if hasattr(value, "value") else str(value)
 
     @staticmethod
-    def _format_timestamp(value: Optional[datetime]) -> Optional[str]:
-        return format_timestamp(value)
-
-    @staticmethod
-    def _parse_timestamp(value: str) -> datetime:
-        return parse_timestamp(value)
-
-    @classmethod
-    def _event_from_dict(cls, data: dict[str, Any]) -> DeviceEvent:
+    def _event_from_dict(data: dict[str, Any]) -> DeviceEvent:
         snapshot = data.get("device")
-        device = None
-        if snapshot:
-            device = ZTEDevice(
-                mac_address=snapshot["mac_address"],
-                ip_address=snapshot["ip_address"],
-                hostname=snapshot["hostname"],
-                interface=snapshot["interface"],
-                connection_type=snapshot["connection_type"],
-                parent_mac=snapshot["parent_mac"],
-                rssi=snapshot["rssi"],
-                wireless=snapshot["wireless"],
-                status=snapshot["status"],
-                first_seen=cls._parse_timestamp(snapshot["first_seen"]),
-                last_seen=cls._parse_timestamp(snapshot["last_seen"]),
-                last_changed=cls._parse_timestamp(snapshot["last_changed"]),
-            )
+        device = device_from_snapshot(snapshot)
         return DeviceEvent(
             event_type=data["event_type"],
             mac_address=data.get("mac_address") or "",
-            timestamp=cls._parse_timestamp(data["timestamp"]),
+            timestamp=parse_timestamp(data["timestamp"]),
             device=device,
             previous_state=data.get("previous_state"),
             current_state=data.get("current_state"),
@@ -210,5 +171,5 @@ class AlertRepository:
             message=row["message"],
             originating_event=event,
             alert_id=row["alert_id"],
-            timestamp=cls._parse_timestamp(row["timestamp"]),
+            timestamp=parse_timestamp(row["timestamp"]),
         )

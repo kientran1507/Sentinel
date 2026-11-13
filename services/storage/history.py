@@ -99,17 +99,12 @@ class HistoryService:
         return limit
 
     @staticmethod
-    def _utc(value: datetime) -> datetime:
-        return ensure_utc(value)
-
-    @classmethod
     def _range(
-        cls,
         start: Optional[datetime],
         end: Optional[datetime],
     ) -> tuple[Optional[datetime], Optional[datetime]]:
-        start = cls._utc(start) if start is not None else None
-        end = cls._utc(end) if end is not None else None
+        start = ensure_utc(start) if start is not None else None
+        end = ensure_utc(end) if end is not None else None
         if start is not None and end is not None and start > end:
             raise ValueError("start must not be later than end")
         return start, end

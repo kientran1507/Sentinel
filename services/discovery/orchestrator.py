@@ -48,33 +48,23 @@ class DiscoveryOrchestrator:
 
     def scan(self) -> List[DiscoveredDevice]:
         """Run the configured scanners and return merged DiscoveredDevice list."""
-        arp_results: List[DiscoveredDevice] = []
-        icmp_results: List[DiscoveredDevice] = []
-
-        # Run ARP scanner if requested
-        if "arp" in self.methods:
-            try:
-                arp = ARPScanner(self.target, **self.arp_kwargs)
-                arp_results = arp.scan()
-            except Exception as e:  # pragma: no cover - exercised in tests
-                logger.exception("ARP scanner failed: %s", e)
-
-        # Run ICMP scanner if requested
-        if "icmp" in self.methods:
-            try:
-                icmp = ICMPScanner(self.target, **self.icmp_kwargs)
-                icmp_results = icmp.scan()
-            except Exception as e:  # pragma: no cover - exercised in tests
-                logger.exception("ICMP scanner failed: %s", e)
+        batches = {"arp": [], "icmp": []}
+        for method, scanner, options in (("arp", ARPScanner, self.arp_kwargs),
+                                          ("icmp", ICMPScanner, self.icmp_kwargs)):
+            if method in self.methods:
+                try:
+                    batches[method] = scanner(self.target, **options).scan()
+                except Exception as exc:
+                    logger.exception("%s scanner failed: %s", method.upper(), exc)
 
         # Merge results by IP
         if self.observation_sink is not None:
-            for batch in (arp_results, icmp_results):
+            for batch in batches.values():
                 try:
                     self.observation_sink(batch)
                 except Exception:
                     logger.exception("Discovery observation persistence failed")
-        merged = self._merge_by_ip(arp_results, icmp_results)
+        merged = self._merge_by_ip(batches["arp"], batches["icmp"])
         if self.hostname_resolver is not None:
             try:
                 merged = self.hostname_resolver.resolve_all(merged)
@@ -104,13 +94,8 @@ class DiscoveryOrchestrator:
             # Prefer MACs discovered via ARP when conflicts occur
             for d in devs:
                 sources.add(d.discovery_source)
-                if d.mac_address:
-                    if mac is None:
-                        mac = d.mac_address
-                    else:
-                        # conflict — if any arp source present prefer that value
-                        if d.discovery_source == "arp":
-                            mac = d.mac_address
+                if d.mac_address and (mac is None or d.discovery_source == "arp"):
+                    mac = d.mac_address
                 if d.hostname and not hostname:
                     hostname = d.hostname
                 if d.discovered_at:

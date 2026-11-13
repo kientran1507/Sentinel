@@ -9,8 +9,12 @@ def ensure_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def format_required_timestamp(value: datetime) -> str:
+    return ensure_utc(value).isoformat()
+
+
 def format_timestamp(value: Optional[datetime]) -> Optional[str]:
-    return ensure_utc(value).isoformat() if value is not None else None
+    return format_required_timestamp(value) if value is not None else None
 
 
 def parse_timestamp(value: str) -> datetime:

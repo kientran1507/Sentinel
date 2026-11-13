@@ -124,9 +124,7 @@ class TelegramNotificationProvider(NotificationProvider):
             f"{alert.message}\n\nTime: {fields['timestamp']}\n"
             f"Severity: {alert.severity.value}\nType: {alert.alert_type.value}"
         )
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        request = Request(url, data=json.dumps({"chat_id": self.chat_id, "text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
-        self._post(request)
+        self._send_text(text)
 
     def send_test(self) -> None:
         if not self.bot_token or not self.chat_id:

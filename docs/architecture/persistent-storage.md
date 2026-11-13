@@ -39,7 +39,9 @@ PostgreSQL migration 3 / SQLite schema 7 adds a separate `security_events` table
 | `detection_findings` | Immutable first-match payload, indexed rule/scope/asset/time, and separate open/resolved state |
 | `detection_evidence` | Atomic finding/event links with a finding foreign key and soft canonical event IDs |
 
-Timestamps are serialized as UTC ISO text; metadata/snapshots are JSON text. Event and alert identities remain legacy MAC/IP keys, not asset-ID foreign keys.
+Timestamps are serialized as UTC ISO text. Metadata and snapshots are JSON text. Event and alert identities remain legacy MAC/IP keys.
+
+Legacy events and alerts share the device snapshot encoder and decoder in [device_snapshots.py](../../services/storage/device_snapshots.py). The snapshot fields and JSON representation are preserved. Shared [timestamp helpers](../../services/storage/timestamps.py) normalize timezone offsets and interpret legacy naive timestamps as UTC. Required device timestamps retain their missing-value failure. Canonical event validation keeps its stricter timestamp contract.
 
 ## Runtime Integration
 

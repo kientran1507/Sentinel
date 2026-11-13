@@ -97,9 +97,6 @@ class HostnameResolver:
         finally:
             socket.setdefaulttimeout(previous_timeout)
 
-    def _lookup_reverse_dns(self, ip: str) -> Optional[str]:
-        return self._lookup_reverse_dns_detail(ip)["hostname"]
-
     def _parse_nbtstat_hostname(self, output: str, ip: str) -> Optional[str]:
         """Extract a workstation/computer name from nbtstat output.
 
@@ -193,9 +190,6 @@ class HostnameResolver:
 
         logger.debug("NetBIOS lookup found no hostname for %s", ip)
         return self._attempt("not_found")
-
-    def _lookup_netbios(self, ip: str) -> Optional[str]:
-        return self._lookup_netbios_detail(ip)["hostname"]
 
     def _subprocess_timeout_output(self, exc: subprocess.TimeoutExpired) -> str:
         parts = []
@@ -368,13 +362,6 @@ class HostnameResolver:
         logger.debug("mDNS lookup found no hostname for %s", ip)
         return self._attempt("not_found")
 
-    def _lookup_mdns(self, ip: str) -> Optional[str]:
-        return self._lookup_mdns_detail(ip)["hostname"]
-
-    def _lookup_dhcp_hostname(self, ip: str) -> Optional[str]:
-        logger.debug("DHCP lease hostname lookup not configured for %s", ip)
-        return None
-
     def _lookup_llmnr_detail(self, ip: str) -> Dict[str, Any]:
         detail = (
             "LLMNR is name-to-address oriented; reverse lookup by IP requires "
@@ -382,12 +369,6 @@ class HostnameResolver:
         )
         logger.debug("LLMNR lookup unavailable for %s: %s", ip, detail)
         return self._attempt("unavailable", detail=detail)
-
-    def _lookup_llmnr(self, ip: str) -> Optional[str]:
-        return self._lookup_llmnr_detail(ip)["hostname"]
-
-    def _resolve_hostname(self, ip: str) -> Optional[str]:
-        return self.resolve_with_details(ip)["hostname"]
 
     def resolve_with_details(self, ip: str) -> Dict[str, Any]:
         attempts: Dict[str, Dict[str, Any]] = {
