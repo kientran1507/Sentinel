@@ -7,14 +7,15 @@ Milestone 3 adds a reviewable record of suspicious conditions detected from Sent
 The owner requested publication of the reviewed development checkpoint at noon
 on 2026-11-13. The [Pi handoff](milestone-3-pi-handoff.md) records safe source
 retrieval, operator-reported offline results, and the execution-plan revisions
-needed before isolated tests can be approved. Publication does not authorize
+needed for isolated test approval. The recovery-only Phase 1 subsequently passed
+under a separate single-run approval, as recorded below. Publication does not authorize
 deployment or close the live acceptance gates.
 
 The 2026-11-13 closeout review found all planned detection features implemented.
 Overall Milestone 3 remains open for the live acceptance gates below. Existing
 Docker runtime, bot-command, restart, synthetic-rule, and normal-workload results
 remain accepted within their recorded boundaries. The newer recovery, watch-summary,
-and labelled-review tools remain local development beyond the accepted Pi image.
+and labelled-review tools are published review source beyond the accepted Pi image.
 
 The remaining sign-off requires:
 
@@ -30,6 +31,12 @@ The remaining sign-off requires:
   against an agreed workload and resource budget.
 - [ ] Representative source/storage interruption, shutdown, and recovery results
   using approved isolated resources, including unsaved records and expired gaps.
+
+The local lab now exercises a real clean stop/restart of its own native
+PostgreSQL, preserving committed records, buffering unsaved input, reconnecting,
+and verifying finding/evidence/state after replay. This supplies local
+clean-stop recovery evidence. Representative Pi/load, crash, network partition,
+and live source-gap coverage remain part of the open gate above.
 
 The local checkout cannot establish these host measurements or supply the missing
 source and policy approvals. Keep the existing runtime running while the owner
@@ -114,13 +121,60 @@ gates remain open. The current accepted Pi image predates this script; use the
 [read-only script mount](../deployment/docker.md#controlled-recovery-check) or a
 separately reviewed updated image.
 
+### Pi Phase 1 Recovery Checkpoint
+
+On 2026-11-13 the owner reported a successful recovery-only run against isolated
+disposable PostgreSQL, using published source commit
+`6a5e4f3b61ee8ec7710402f67e8e988e24e28a96` and run identity
+`m3r-20261113-6a5e4f3-e46a2ca2`.
+
+| Case | Retained records | Findings |
+| --- | ---: | ---: |
+| Source | 5 | 1 |
+| Initialize | 5 | 1 |
+| Partial write | 5 | 1 |
+| Ambiguous write | 5 | 1 |
+| Overflow | 2 | 0 |
+| Pending shutdown | 5 | 1 |
+| Total | 27 | 5 |
+
+The run generated 30 records. Three were deliberately dropped in the overflow
+case; they are expected loss and are not claimed recovered. Evidence retention
+and replay checks passed. The source case accepted five records initially, then
+reported `idle` with zero accepted/pending/dropped. The other five recovered polls
+reported `healthy`, zero pending, and zero new drops.
+
+Both test containers stopped with exit code 0 and PID 0. No forced termination
+or cleanup failures were reported. All five production-guard samples passed;
+the accepted runtime retained restart count 0 and production PostgreSQL stayed
+healthy. Credentials, `.env`, bots, and existing database resources were preserved.
+
+The reviewed runner's SHA-256 is
+`dd0c850aebd9dad21f0f06b6e4ed3c5a752ff5e37e949544409c864b814aca7a`.
+Its test file's SHA-256 is
+`ee62d198418cc8b32387900a7d00d2e92a1211fdfdb5e814e267bf7163f72907`.
+All 13 offline regression/safety tests also passed during independent Windows
+review before execution. Their temporary-SQLite report test adapted only the
+backend discriminator; the subsequent Pi run used actual PostgreSQL.
+
+The owner retained checksummed evidence on the Pi at
+`/home/melikecatto/sentinel-acceptance/2026-11-13/handoff/phase1/outputs/m3r-20261113-6a5e4f3-e46a2ca2/RESULT.md`.
+Both stopped test containers, the internal network, and the data volume remain
+retained. The single-run approval is consumed; replaying this phase or removing
+those resources requires a separate owner decision.
+
+This closes controlled process-local fault acceptance against disposable
+PostgreSQL. Actual database/network interruption, sustained throughput, live
+source coverage, and false-positive acceptance remain open.
+
 ### Live Acceptance Still Required
 
 The reviewed [live-source proposal](milestone-3-container-live-source-proposal.md)
 records the read-only source inventory and owner decisions. Before live SSH apply,
 define exact per-scenario record selection because collector labels do not isolate
-overlapping journal lookbacks. Actual endpoints/budgets and disposable fault
-resources remain unapproved. Five existing IPv4 NFLOG rules use group 100, with
+overlapping journal lookbacks. Actual live endpoints/budgets remain unapproved.
+The Phase 1 grant covered only the completed isolated recovery run; additional
+fault operations remain pending. Five existing IPv4 NFLOG rules use group 100, with
 readable event delivery, consumer ownership, and policy attribution still unverified.
 
 | Gate | Current state | Required next step |
@@ -128,7 +182,7 @@ readable event delivery, consumer ownership, and policy attribution still unveri
 | NET-001 and NET-002 | Canonical connection imports pass. Interface counters provide separate cumulative health measurements | Approve a traffic producer such as an explicitly enabled metadata-only capture adapter, then validate labelled lab traffic |
 | AUTH-001 and AUTH-002 | Real SSH collection and PostgreSQL persistence, controlled finding lifecycle, all-five-rule container acceptance, and non-root Docker operation passed | Validate live multi-source authentication using approved test sources and accounts |
 | NET-003 | Policy-labelled canonical denial imports and separate nftables/iptables counter adapters pass | Verify a functioning individual firewall log source and explicit flow policy before implementing its event adapter |
-| Normal workload | A 30-minute Pi observation passed with 31 samples, 60 successful polls, fresh evidence, no restarts, and no reported errors | Complete labelled false-positive review, ingestion throughput/saturation, source-gap coverage, and isolated failure/recovery acceptance |
+| Normal workload and controlled recovery | A 30-minute Pi observation and the isolated PostgreSQL Phase 1 recovery check passed within their recorded boundaries | Complete labelled false-positive review, ingestion throughput/saturation, live source-gap coverage, and representative real-outage acceptance |
 
 The rule catalog describes required evidence, false positives, suggested responses, and controlled validation for each rule. [Rule catalog](../monitoring/detection-rules.md)
 

@@ -2,6 +2,11 @@
 
 ## Local CLI
 
+`python -m scripts.local_lab` runs detection, controlled recovery, a capped batch/replay,
+and an actual stop/restart check against its own temporary native PostgreSQL. Add `--full-suite` for the
+complete test suite. It loads no `.env` or configured backend connection.
+[One-command local lab](development/local-lab.md)
+
 The [Docker deployment](deployment/docker.md) runs the same commands from an
 installed package. Mounted journals use `--journal-directory /host/journal` on
 `host-snapshot` or `host-watch`. The integrated runtime and watcher both close
@@ -87,6 +92,8 @@ Event type filters use serialized values: `NEW_DEVICE`, `DEVICE_ONLINE`, `DEVICE
 See [storage](architecture/persistent-storage.md) for restart behavior and [troubleshooting](troubleshooting/common-issues.md).
 
 ## Detection Findings
+
+For bounded pilot input preparation, run `python -m scripts.prepare_activity_pilot --scope lab`. Preview is the default; `--output-dir` writes 912 labelled synthetic events to a new directory with per-file hashes. It never connects to storage or executes a workload. [Preparation and approval boundaries](development/activity-pilot-preparation.md)
 
 For offline review of a labelled dataset, run `python -m scripts.evaluate_activity observations.jsonl labels.json --scope lab`. It compares exact expected activity-finding counts using a separate in-memory database for each scenario. It loads no environment configuration and never connects to deployed storage. Optional `--activity-rule RULE=COUNT/SECONDS` overrides use the existing bounds. [Labels, reports, and limitations](development/labelled-activity-evaluation.md)
 

@@ -66,6 +66,11 @@ See [commands](docs/commands.md) and [discovery](docs/monitoring/device-discover
 
 ## Development
 
+Run `python -m scripts.local_lab --full-suite` for an isolated native PostgreSQL
+lab using the existing local binaries. It runs detection/recovery, a capped batch
+and replay, and all tests, then verifies cleanup of its temporary cluster.
+[Local lab setup and reports](docs/development/local-lab.md)
+
 ```powershell
 python -m unittest discover -s tests -p "test_*.py" -v
 ```

@@ -60,6 +60,26 @@ close live false-positive, source attribution, or sustained-capacity acceptance.
 
 ## Continue the Acceptance Preparation
 
+### Phase 1 Completed
+
+The owner subsequently reported recovery-only Phase 1 passed under run identity
+`m3r-20261113-6a5e4f3-e46a2ca2`. The revised runner's source-case report check was
+reviewed, and all 13 offline tests passed before the approved run. Actual isolated
+PostgreSQL acceptance retained 27 of 30 generated records, with three deliberate
+overflow drops and five findings. Evidence/replay checks and all five production
+guard samples passed. Both test containers stopped with exit code 0 and PID 0,
+without forced termination or cleanup failures.
+
+The original checkout remains preserved; the review clone and checksummed
+artifacts are available under the owner's home directory. Both stopped test
+containers, their internal network, and the data volume remain retained. The
+single-run authorization is consumed. The initial preparation instructions below
+are historical context for Phase 1 and requirements for any later proposal;
+they do not authorize another run. See the
+[full checkpoint](milestone-3-acceptance.md#pi-phase-1-recovery-checkpoint).
+
+### Remaining Preparation
+
 Preserve `/tmp/Sentinel-m3-acceptance-preparation-20261113` and its original
 `APPROVAL_PLAN.md`. Copy artifacts to an owner-controlled durable directory,
 recording checksums and preserving originals. The proposed location is
@@ -79,8 +99,8 @@ Revise the proposed isolated test plan before requesting execution approval:
 4. Provide actual deadline, production-health, volume-size, and abort checks.
    Keep the declared total budget enforceable across all phases.
 
-First prepare only the isolated database and six-case recovery phase for owner
-review. SQL/batch pilots and actual database pausing remain pending. No actual
+The recovery-only Phase 1 is complete. Prepare a separately bounded proposal for
+the next phase. SQL/batch pilots and actual database pausing remain pending. No actual
 SSH devices, target/account/port, rejected key, connection producer, firewall
 consumer, or live policy mapping has been approved. Preserve those pending states.
 

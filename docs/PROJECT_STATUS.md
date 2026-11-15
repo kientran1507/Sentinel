@@ -1,13 +1,23 @@
 # Project Status
 
-Code review snapshot: 2026-11-13. This page records implementation boundaries, not deployment certification or a fixed test count.
+Code review snapshot: 2026-11-15. This page records implementation boundaries, not deployment certification or a fixed test count.
 
-Latest development validation passed all 679 tests, including 193 PostgreSQL
+The owner reported Phase 1 recovery acceptance passed on the Pi under run identity
+`m3r-20261113-6a5e4f3-e46a2ca2`: six process-local fault cases against disposable
+PostgreSQL, 30 generated records, 27 retained, five findings, and three deliberate
+overflow drops. Evidence/replay checks passed; both test containers exited 0
+with PID 0 and no forced termination or cleanup failures. All five production
+guard samples passed. Stopped test resources and checksummed evidence remain
+retained, and the single-run approval is consumed. This completes controlled
+recovery acceptance; real-outage, workload, and live-source gates remain open.
+[Phase 1 evidence record](development/milestone-3-acceptance.md#pi-phase-1-recovery-checkpoint)
+
+Latest development validation passed all 701 tests, including 193 PostgreSQL
 cases, with no skips. The controlled recovery harness covers six process-local
 fault scenarios against real storage, including an ambiguous committed write,
 explicit buffer loss, and finding/evidence/lifecycle preservation after replay.
-Temporary SQLite files and a newly created disposable PostgreSQL database provided
-the validation boundary; the PostgreSQL database was removed afterward. Syntax,
+Temporary SQLite files and a new native loopback PostgreSQL cluster provided
+the latest validation boundary; the server was stopped and its owned data removed. Syntax,
 related documentation links, and Git whitespace checks passed. The
 accepted Pi image predates this harness. No deployed runtime or database was
 interrupted. Live SSH lab selection remains deferred while the owner considers
@@ -15,12 +25,34 @@ the setup. Live traffic, policy-attributed firewall events, representative failu
 testing, and throughput/false-positive acceptance remain open.
 [Recovery procedure](development/milestone-3-acceptance.md#controlled-recovery-check)
 
+The Windows checkout now has a one-command native PostgreSQL lab using its
+existing 16.3 binaries. `python -m scripts.local_lab --full-suite` passed detection,
+six recovery cases, the 912-event/80-finding pilot and replay, plus all 701 tests
+with no skips. The child test process excludes runtime credentials and disables
+dotenv loading. Parent environment values remained unchanged; shutdown and
+temporary-data removal were verified, with the existing PostgreSQL service left
+running. Reports remain under the ignored `dist/local-lab/` directory. Regression
+coverage includes Windows file-based command capture, ownership, failed cleanup,
+and child-process isolation. This local batch measurement leaves Pi sustained
+throughput, real outages, and live-source acceptance open.
+[Local lab workflow](development/local-lab.md)
+
+The lab also passed an actual clean stop/restart of its owned PostgreSQL server.
+Two committed records survived; three additional records stayed buffered during
+unavailability, persisted after reconnect, and produced one finding with retained
+evidence. Replay preserved finding payload/state and record counts. The full
+701-test run passed without skips; clean final shutdown, temporary-data removal,
+and unchanged parent environment were verified. The existing PostgreSQL service
+stayed running and no Pi resources were accessed. This closes the local clean-stop
+recovery check while representative Pi/load, crash, network partition, and live
+source acceptance remain open.
+
 Watcher shutdown now retains cumulative accepted, rejected, and buffer-drop
 counts plus source-status report counts across completed polls. Earlier coverage
 problems remain visible after recovery. Shared SQLite/PostgreSQL regression cases
 verify bounded and interrupted runs, unchanged exit behavior, and the difference
-between accepted replays and unique stored records. These additions remain local
-development and are absent from the running accepted Pi image.
+between accepted replays and unique stored records. These additions are published
+in commit `6a5e4f3` and are absent from the running accepted Pi image.
 [Watch reporting](monitoring/host-telemetry.md#periodic-watching)
 
 Offline labelled activity review now compares exact expected findings against
@@ -48,6 +80,18 @@ Pi image, configuration, and production data were preserved. The
 the remaining live-source, policy, labelled-review, load, and outage requirements.
 
 ## Milestone Position
+
+Continued development after the frozen November 13 noon checkpoint adds an
+offline pilot-input generator. It prepares 57/285/570-event batches with unique
+identities across all 912 events, per-file hashes, and 80 expected findings.
+Preview writes nothing; explicit output refuses existing directories. Regression
+checks confirm replay adds no canonical records or findings. The full suite above
+passed with no skips and the disposable PostgreSQL database was removed.
+Syntax, documentation links, and Git whitespace checks passed. This generator
+and its guide were developed after the frozen noon commit and are included in
+the subsequent local-lab development checkpoint. The accepted Pi image is unchanged.
+No database workload or deployment was executed by the generator.
+[Pilot preparation](development/activity-pilot-preparation.md)
 
 Milestones 1 and 2 have completed implementation acceptance. Milestone 3 implements all seven planned rule IDs, a registry, durable findings/evidence, configurable fixed windows, deduplication, and audited operator resolution. Current inputs include startup/discovery sightings, collector failures, and explicit canonical activity imports. Live activity-source and lab acceptance remain in progress. [Detection architecture](architecture/detection-engine.md)
 

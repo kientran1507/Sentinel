@@ -2,6 +2,11 @@
 
 ## Setup and Checks
 
+For an isolated native PostgreSQL lab, run `python -m scripts.local_lab` from
+the existing development environment. Add `--full-suite` to run every regression
+test against that temporary cluster. This workflow preserves runtime configuration
+and needs no Pi access. [Local lab setup and reports](docs/development/local-lab.md)
+
 Follow [README setup](README.md#setup), then run:
 
 ```powershell

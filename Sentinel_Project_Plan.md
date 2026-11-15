@@ -91,6 +91,8 @@ Status is in progress from 2026-11-09. The [detection engine](docs/architecture/
 - [x] Build and validate the image and bounded SSH source/persistence workflow on the Linux Docker host.
 - [x] Complete coordinated integrated-runtime startup, bot/router checks, and graceful container stop/restart with post-restart command and history acceptance.
 - [x] Validate all five activity scenarios inside the deployed container and record a 30-minute normal-workload observation with retained evidence and healthy polls.
+- [x] Complete owner-approved recovery-only Phase 1 against isolated PostgreSQL: six process-local fault cases, retained evidence/replay, explicit overflow loss, clean test-container exit, and production guards. Real outage and throughput acceptance remain open.
+- [x] Add and execute a one-command native local PostgreSQL lab for detection, controlled recovery, a capped 912-event pilot/replay, actual owned-server stop/restart with buffered recovery, and the full regression suite, with verified temporary cluster cleanup and no runtime/Pi configuration access.
 - [ ] Complete labelled false-positive review, throughput/saturation, source-gap/failure acceptance, and remaining live activity sources.
 - [ ] Validate live telemetry adapters, gateway policy attribution, labelled lab scenarios, and false-positive tuning for activity rules.
 
