@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import threading
 
 from services.discovery.device_registry import DeviceRegistry
 
@@ -25,7 +24,6 @@ class CommandService:
         self.registry = handler.registry
         self.alert_history = handler.alert_history
         self.adapters = []
-        self._stop = threading.Event()
 
         if os.getenv("DISCORD_BOT_TOKEN"):
             self.adapters.append(DiscordCommandBot(os.environ["DISCORD_BOT_TOKEN"], self.handler))
@@ -37,7 +35,6 @@ class CommandService:
             adapter.start()
 
     def stop(self) -> None:
-        self._stop.set()
         for adapter in self.adapters:
             adapter.stop()
 

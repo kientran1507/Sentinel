@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from typing import Any, Optional
+
+from services.discovery.models import DeviceEvent, DeviceEventType
+
+from .base import Storage
+from .device_snapshots import device_snapshot, device_from_snapshot
+from .devices import device_identity_key, normalize_mac
+from .timestamps import format_timestamp, parse_timestamp
+
+
+class DeviceEventRepository:
+    """Persist immutable device events independently of the runtime event bus."""
+
+    def __init__(self, storage: Storage):
+        self.storage = storage
+
+    def save(self, event: DeviceEvent) -> DeviceEvent:
+        """Save an event idempotently and return the stored representation."""
+        values = self._values(event)
+        with self.storage.transaction() as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO device_events (
+                    event_id, event_type, timestamp, device_identity,
+                    mac_address, ip_address, hostname, previous_state,
+                    current_state, metadata, device_snapshot
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+            row = connection.execute(
+                "SELECT * FROM device_events WHERE event_id = ?",
+                (event.event_id,),
+            ).fetchone()
+            return self._from_row(row)
+
+    def get(self, event_id: str) -> Optional[DeviceEvent]:
+        with self.storage.transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM device_events WHERE event_id = ?", (event_id,)
+            ).fetchone()
+            return self._from_row(row) if row else None
+
+    def list(self) -> list[DeviceEvent]:
+        return self._list("SELECT * FROM device_events ORDER BY timestamp ASC, event_id ASC")
+
+    def query(
+        self,
+        *,
+        limit: int,
+        device_identity: Optional[str] = None,
+        event_type: Optional[DeviceEventType | str] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> list[DeviceEvent]:
+        clauses = []
+        parameters: list[Any] = []
+        if device_identity:
+            if device_identity.startswith("ip:"):
+                ip_address = device_identity[3:]
+                clauses.append("(device_identity = ? OR ip_address = ?)")
+                parameters.extend((device_identity, ip_address))
+            else:
+                clauses.append("device_identity = ?")
+                parameters.append(device_identity)
+        if event_type is not None:
+            clauses.append("event_type = ?")
+            parameters.append(self._event_type_value(event_type))
+        if start is not None:
+            clauses.append("timestamp >= ?")
+            parameters.append(format_timestamp(start))
+        if end is not None:
+            clauses.append("timestamp < ?")
+            parameters.append(format_timestamp(end))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        return self._list(
+            "SELECT * FROM device_events" + where +
+            " ORDER BY timestamp DESC, event_id DESC LIMIT ?",
+            tuple(parameters) + (limit,),
+        )
+
+    def list_for_device(
+        self,
+        *,
+        mac_address: Optional[str] = None,
+        ip_address: Optional[str] = None,
+    ) -> list[DeviceEvent]:
+        if mac_address:
+            identity = device_identity_key(mac_address, ip_address)
+            return self._list(
+                "SELECT * FROM device_events WHERE device_identity = "
+                "? ORDER BY timestamp ASC, event_id ASC",
+                (identity,),
+            )
+        if ip_address:
+            return self._list(
+                "SELECT * FROM device_events WHERE ip_address = ? "
+                "ORDER BY timestamp ASC, event_id ASC",
+                (ip_address,),
+            )
+        raise ValueError("mac_address or ip_address is required")
+
+    def _list(self, query: str, parameters: tuple[Any, ...] = ()) -> list[DeviceEvent]:
+        with self.storage.transaction() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+            return [self._from_row(row) for row in rows]
+
+    @classmethod
+    def _values(cls, event: DeviceEvent) -> tuple[Any, ...]:
+        mac_address = normalize_mac(event.mac_address)
+        device_identity = device_identity_key(mac_address, event.ip_address)
+        return (
+            event.event_id,
+            cls._event_type_value(event.event_type),
+            format_timestamp(event.timestamp),
+            device_identity,
+            mac_address,
+            event.ip_address,
+            event.hostname,
+            cls._json_value(event.previous_state),
+            cls._json_value(event.current_state),
+            cls._json_value(event.metadata) or "{}",
+            cls._json_value(device_snapshot(event.device)),
+        )
+
+    @staticmethod
+    def _event_type_value(event_type: DeviceEventType | str) -> str:
+        return event_type.value if isinstance(event_type, DeviceEventType) else str(event_type)
+
+    @staticmethod
+    def _json_value(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        return json.dumps(value, sort_keys=True)
+
+    @staticmethod
+    def _from_row(row) -> DeviceEvent:
+        snapshot = json.loads(row["device_snapshot"]) if row["device_snapshot"] else None
+        device = device_from_snapshot(snapshot)
+        return DeviceEvent(
+            event_type=row["event_type"],
+            mac_address=row["mac_address"] or "",
+            timestamp=parse_timestamp(row["timestamp"]),
+            device=device,
+            previous_state=json.loads(row["previous_state"]) if row["previous_state"] else None,
+            current_state=json.loads(row["current_state"]) if row["current_state"] else None,
+            metadata=json.loads(row["metadata"]),
+            event_id=row["event_id"],
+            hostname=row["hostname"],
+            ip_address=row["ip_address"],
+        )

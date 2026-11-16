@@ -77,7 +77,7 @@ class TelegramCommandBot:
             try:
                 self.poll_once()
             except Exception as exc:
-                logger.error("Telegram command polling failed: %s", exc)
+                logger.error("Telegram command polling failed: %s", type(exc).__name__)
                 self._stop.wait(min(5.0, self.timeout))
             self._stopped.set()
 

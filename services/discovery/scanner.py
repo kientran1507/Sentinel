@@ -5,13 +5,26 @@ import logging
 import platform
 import shutil
 import subprocess
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, List, Optional
 
 from .models import DiscoveredDevice
 
 logger = logging.getLogger(__name__)
+
+
+def expand_targets(
+    target_network: Optional[str], addresses: Optional[List[str]], logger: logging.Logger
+) -> List[str]:
+    """Keep explicit targets or expand a CIDR into host addresses for either scanner."""
+    if addresses is not None:
+        return addresses
+    try:
+        network = ipaddress.ip_network(target_network, strict=False)
+    except Exception as exc:
+        logger.error("invalid target network %s: %s", target_network, exc)
+        return []
+    return [str(address) for address in network.hosts()]
 
 
 class ICMPScanner:
@@ -46,18 +59,6 @@ class ICMPScanner:
             logger.warning("ping command not found on PATH; scanner will fail")
         return ping
 
-    def _expand_targets(self) -> List[str]:
-        if self._ips is not None:
-            return self._ips
-        # Expand CIDR
-        try:
-            net = ipaddress.ip_network(self._target_network, strict=False)
-        except Exception as e:
-            logger.error("invalid target network %s: %s", self._target_network, e)
-            return []
-
-        return [str(ip) for ip in net.hosts()]
-
     def _ping(self, ip: str, timeout: int = 1) -> bool:
         """Ping an IP address once. Returns True if host is reachable.
 
@@ -86,7 +87,7 @@ class ICMPScanner:
         The returned DiscoveredDevice objects will have `mac_address` and
         `hostname` set to None for ICMP scans.
         """
-        ips = self._expand_targets()
+        ips = expand_targets(self._target_network, self._ips, logger)
         devices: List[DiscoveredDevice] = []
 
         if not ips:

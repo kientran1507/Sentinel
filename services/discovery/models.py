@@ -34,10 +34,18 @@ class DiscoveredDevice:
     hostname: Optional[str] = None
     discovery_source: str = "icmp"
     discovered_at: datetime = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.discovered_at is None:
             self.discovered_at = datetime.now(timezone.utc)
+
+
+@dataclass(frozen=True)
+class ZTEObservation:
+    source: str
+    observed_at: datetime
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

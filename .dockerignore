@@ -1,0 +1,27 @@
+# Allow only reviewed source, packaging, tests, and Docker build inputs.
+**
+!services/
+!services/**/
+!services/**/*.py
+!scripts/
+!scripts/**/
+!scripts/**/*.py
+!tests/
+!tests/**/
+!tests/**/*.py
+!pyproject.toml
+!setup.cfg
+!infrastructure/
+!infrastructure/docker/
+!infrastructure/docker/Dockerfile
+!infrastructure/docker/requirements.lock
+**/__pycache__/**
+**/*.pyc
+**/.env
+**/.env.*
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+**/*.pem
+**/*.key

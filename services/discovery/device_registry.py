@@ -41,29 +41,23 @@ class DeviceRegistry:
             existing = self.devices[mac]
 
             # Store history of changes before applying new values
-            if device.ip_address and existing.ip_address != device.ip_address:
-                self.previous_ip[mac] = existing.ip_address
-            if device.hostname and existing.hostname != device.hostname:
-                self.previous_hostname[mac] = existing.hostname
-            if device.connection_type and existing.connection_type != device.connection_type:
-                self.previous_connection_type[mac] = existing.connection_type
+            for field, history in (("ip_address", self.previous_ip), ("hostname", self.previous_hostname),
+                                   ("connection_type", self.previous_connection_type)):
+                value = getattr(device, field)
+                if value and value != getattr(existing, field):
+                    history[mac] = getattr(existing, field)
             if existing.status != device.status:
                 self.previous_status[mac] = existing.status
 
             # Update existing object fields
-            if device.ip_address:
-                existing.ip_address = device.ip_address
-            if device.hostname:
-                existing.hostname = device.hostname
-            if device.connection_type:
-                existing.connection_type = device.connection_type
-            if device.parent_mac:
-                existing.parent_mac = device.parent_mac
+            for field in ("ip_address", "hostname", "connection_type", "parent_mac"):
+                value = getattr(device, field)
+                if value:
+                    setattr(existing, field, value)
             if device.rssi is not None:
                 existing.rssi = device.rssi
             if device.interface:
                 existing.interface = device.interface
-
             existing.wireless = device.wireless
             existing.status = device.status
             existing.last_seen = device.last_seen or existing.last_seen
@@ -94,12 +88,9 @@ class DeviceRegistry:
         if not mac:
             return None
         mac = mac.strip().lower()
-        self.previous_ip.pop(mac, None)
-        self.previous_hostname.pop(mac, None)
-        self.previous_connection_type.pop(mac, None)
-        self.previous_status.pop(mac, None)
-        self.consecutive_success.pop(mac, None)
-        self.consecutive_missed.pop(mac, None)
+        for history in (self.previous_ip, self.previous_hostname, self.previous_connection_type,
+                        self.previous_status, self.consecutive_success, self.consecutive_missed):
+            history.pop(mac, None)
         return self.devices.pop(mac, None)
 
     def snapshot(self) -> List[ZTEDevice]:

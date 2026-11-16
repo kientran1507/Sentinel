@@ -1,43 +1,28 @@
-# Sentinel Discovery
+# Discovery Package
 
-This package contains the implemented network discovery, hostname enrichment, ZTE collection, and presence-monitoring components.
+| Component | Responsibility |
+| --- | --- |
+| `ICMPScanner` | Concurrent system-ping discovery |
+| `ARPScanner` | Local-link Scapy IP/MAC discovery |
+| `DiscoveryOrchestrator` | Scanner failure isolation, IP merge, optional hostname enrichment and observation sink |
+| `HostnameResolver` | PTR, Windows NetBIOS, mDNS, and optional LLMNR hook |
+| `ZTEH3601PClient` / `ZTECollector` | Router authentication and DHCP/mesh snapshots |
+| `PresenceTracker` / `DeviceRegistry` | Transient state, missed-poll counters, and transition events |
+| `ZTEMonitor` | Continuous polling and event publication |
 
-## Discovery components
-
-- `ICMPScanner` probes a CIDR or explicit IP list with configurable concurrency and ping timeout.
-- `ARPScanner` uses Scapy ARP requests for on-link IP/MAC discovery and may require raw-network privileges.
-- `DiscoveryOrchestrator` runs selected scanners, isolates scanner failures, deduplicates by IP, and prefers ARP MAC data.
-- `HostnameResolver` attempts PTR, Windows NetBIOS, mDNS, and an optional LLMNR hook. Failures are non-fatal.
-- `DeviceRegistry` stores the canonical in-memory ZTE device state used by the integrated runtime.
-
-## ZTE monitoring components
-
-- `ZTEH3601PClient` authenticates and queries the router.
-- `ZTECollector` merges DHCP/LAN clients with mesh topology records.
-- `PresenceTracker` emits typed discovery, offline, and recovery events with offline debouncing.
-- `ZTEMonitor` polls the collector and publishes events to the shared `EventBus`.
-
-## Examples
-
-```python
-from services.discovery.orchestrator import DiscoveryOrchestrator
-
-orchestrator = DiscoveryOrchestrator("192.168.1.0/24", methods=["arp", "icmp"])
-devices = orchestrator.scan()
-```
+## Example
 
 ```python
 from services.discovery.hostname_resolver import HostnameResolver
+from services.discovery.orchestrator import DiscoveryOrchestrator
 
-resolved = HostnameResolver(timeout=1.0).resolve_all(devices)
+devices = DiscoveryOrchestrator(
+    "192.168.1.0/24",
+    methods=["arp", "icmp"],
+    hostname_resolver=HostnameResolver(timeout=1.0),
+).scan()
 ```
 
-## Diagnostics and tests
+An optional `observation_sink` receives raw ARP and ICMP lists, then the merged/enriched list. Persistence and resolver exceptions are isolated at the orchestration boundary. ARP wins conflicting MAC evidence in the returned merged records.
 
-```powershell
-python scripts/discover.py 192.168.1.0/24 --method both --orchestrator
-python scripts/test_hostname_resolution.py 192.168.1.12
-python -m unittest discover -s tests -p "test_*.py" -v
-```
-
-Discovery records and monitoring state are in memory. Use `python -m scripts.sentinel start` for one process where monitoring and commands share the same registry.
+See [discovery usage](../../docs/monitoring/device-discovery.md), [monitoring](../../docs/monitoring/monitoring.md), and [testing](../../docs/development/contributing.md). The integrated runtime monitors ZTE; standalone discovery does not populate its live registry.

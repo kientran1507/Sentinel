@@ -8,13 +8,13 @@ assignees: ""
 
 ## Summary
 
-Describe the issue briefly.
+Describe the problem and affected command or component.
 
 ## Steps to Reproduce
 
-1. 
-2. 
-3. 
+1. Describe the setup and command.
+2. List the steps that trigger the problem.
+3. Include a minimal example if useful.
 
 ## Expected Result
 
@@ -26,4 +26,4 @@ Describe what happened instead.
 
 ## Notes
 
-Add any context, links, or screenshots that help explain the issue.
+Include the commit, operating system, Python version, selected backend, and relevant logs. Remove credentials, tokens, connection strings, and private inventory details.

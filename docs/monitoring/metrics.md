@@ -1,5 +1,9 @@
-# Metrics
+# Metrics Status
 
-Sentinel currently tracks operational state in memory rather than exposing a metrics backend. Available runtime values include registry device counts, device status, `first_seen`, `last_seen`, missed-poll counters, monitor lifecycle state, event transitions, and bounded recent alert history.
+Sentinel exposes operational state through commands and logs: live device counts/status, first/last seen values, missed-poll counters, monitor lifecycle, transitions, and recent alerts.
 
-There is no Prometheus endpoint, database retention, dashboard, or historical metrics API yet. Metrics export and retention are future work.
+`monitor.health.snapshot()` provides immutable process-local ZTE poll counts, failure streak, last success/failure/completion times, latest duration, and error class/stage. A new monitor resets counters. Canonical lifecycle/error/recovery history does not provide continuous liveness or historical successful-poll samples. See [collector health](../architecture/security-events.md#collector-health).
+
+SQL stores inventory observations, events, and alerts. It is not a metrics time-series backend. Canonical events support [explicit scoped retention](../architecture/security-events.md#explicit-retention), but no automatic cleanup is enabled. [JSON logs](logging.md) support optional numeric context without adding a metrics exporter.
+
+No Prometheus endpoint/exporter, Grafana integration, dashboard, or historical metrics API is supplied. See [commands](../commands.md) and [storage](../architecture/persistent-storage.md) for available queries.

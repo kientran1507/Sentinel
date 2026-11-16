@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import threading
+from shlex import quote
 
 from .handler import CommandHandler
 from .renderers import render_discord
@@ -38,9 +39,9 @@ class DiscordCommandBot:
         tree = discord.app_commands.CommandTree(client)
         self._client = client
 
-        async def respond(interaction, command_name: str):
+        async def respond(interaction, command_name: str, args=None):
             response = self.handler.handle(
-                f"/{command_name}",
+            " ".join([f"/{command_name}"] + (args or [])),
                 platform="discord",
                 user_id=str(interaction.user.id),
             )
@@ -65,6 +66,49 @@ class DiscordCommandBot:
         @tree.command(name="alerts", description="Show recent Sentinel alerts")
         async def alerts_command(interaction):
             await respond(interaction, "alerts")
+
+        @tree.command(name="findings", description="Show detection findings")
+        async def findings_command(interaction, limit: int | None = None, status: str | None = None, before: str | None = None):
+            args = []
+            if limit is not None:
+                args.extend(["--limit", str(limit)])
+            if status is not None:
+                args.extend(["--status", status])
+            if before is not None:
+                args.extend(["--before", before])
+            await respond(interaction, "findings", args)
+
+        @tree.command(name="finding", description="Inspect a detection finding")
+        async def finding_command(interaction, finding_id: str):
+            await respond(interaction, "finding", [finding_id])
+
+        @tree.command(name="resolve_finding", description="Resolve a finding with an audited reason")
+        async def resolve_finding_command(interaction, finding_id: str, reason: str):
+            await respond(interaction, "resolve-finding", [quote(finding_id), quote(reason)])
+
+        @tree.command(name="events", description="Show historical device events")
+        async def events_command(interaction, limit: int | None = None, device: str | None = None, type: str | None = None):
+            args = []
+            if limit is not None:
+                args.extend(["--limit", str(limit)])
+            if device:
+                args.extend(["--device", device])
+            if type:
+                args.extend(["--type", type])
+            await respond(interaction, "events", args)
+
+        @tree.command(name="alert_history", description="Show historical alerts")
+        async def alert_history_command(interaction, limit: int | None = None, device: str | None = None, severity: str | None = None, type: str | None = None):
+            args = []
+            if limit is not None:
+                args.extend(["--limit", str(limit)])
+            if device:
+                args.extend(["--device", device])
+            if severity:
+                args.extend(["--severity", severity])
+            if type:
+                args.extend(["--type", type])
+            await respond(interaction, "alert-history", args)
 
         @client.event
         async def on_ready():

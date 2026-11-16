@@ -1,11 +1,13 @@
 import unittest
 import os
+from io import BytesIO, StringIO
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
 from services.alerting.engine import AlertEngine, AlertType, Severity
 from services.alerting.notifications import (
     DiscordNotificationProvider,
+    NotificationError,
     NotificationManager,
     NotificationProvider,
     TelegramNotificationProvider,
@@ -140,14 +142,43 @@ class TestEventPipeline(unittest.TestCase):
 
     @patch("services.alerting.notifications.urlopen", side_effect=HTTPError("https://discord.com/api/webhooks/secret", 403, "forbidden", {}, None))
     def test_discord_http_error_does_not_expose_webhook(self, urlopen):
-        with self.assertRaisesRegex(Exception, "HTTP 403") as context:
+        with self.assertRaisesRegex(NotificationError, "HTTP 403") as context:
             DiscordNotificationProvider("https://discord.com/api/webhooks/secret").send_test()
         self.assertNotIn("secret", str(context.exception))
 
     @patch("services.alerting.notifications.urlopen", side_effect=HTTPError("url", 401, "unauthorized", {}, None))
     def test_discord_http_error_is_wrapped(self, urlopen):
-        with self.assertRaisesRegex(Exception, "Discord request failed"):
+        with self.assertRaisesRegex(NotificationError, "Discord request failed"):
             DiscordNotificationProvider("https://discord.example/webhook").send_test()
+
+    @patch("services.alerting.notifications.urlopen")
+    def test_discord_http_error_response_streams_preserve_wrapping(self, urlopen):
+        for stream, expected in (
+                (BytesIO(b""), "<empty>"), (StringIO(""), "<empty>"),
+                (BytesIO(b" denied\r\ninvalid: \xff "), "denied  invalid: \ufffd"),
+                (StringIO(" denied\r\ntext "), "denied  text"),
+                (BytesIO(b"x" * 301), "x" * 300 + "...")):
+            with self.subTest(stream=type(stream).__name__, expected=expected):
+                error = HTTPError("https://discord.example/webhooks/secret", 403, "forbidden", {}, stream)
+                self.addCleanup(error.close)
+                urlopen.side_effect = error
+                with self.assertRaises(NotificationError) as context:
+                    DiscordNotificationProvider("https://discord.example/webhooks/secret").send_test()
+                self.assertEqual(str(context.exception), f"Discord request failed: HTTP 403; response: {expected}")
+                self.assertNotIn("secret", str(context.exception))
+                self.assertIs(context.exception.__cause__, error)
+
+    @patch("services.alerting.notifications.urlopen")
+    def test_discord_http_error_body_read_failure_preserves_safe_status(self, urlopen):
+        error = HTTPError("https://discord.example/webhooks/secret", 403, "forbidden", {}, BytesIO())
+        self.addCleanup(error.close)
+        urlopen.side_effect = error
+        with patch.object(error, "read", side_effect=OSError("secret")):
+            with self.assertRaises(NotificationError) as context:
+                DiscordNotificationProvider("https://discord.example/webhooks/secret").send_test()
+        self.assertEqual(str(context.exception), "Discord request failed: HTTP 403; response: <empty>")
+        self.assertNotIn("secret", str(context.exception))
+        self.assertIs(context.exception.__cause__, error)
 
     @patch("services.alerting.notifications.urlopen", side_effect=URLError("offline"))
     def test_discord_connection_error_is_wrapped(self, urlopen):

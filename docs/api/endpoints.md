@@ -1,7 +1,7 @@
-# API Endpoints
+# API Status
 
-Sentinel does not currently expose a REST API. The implemented operator interface is the shared command handler exposed through Telegram Bot API polling and Discord native slash commands.
+No REST endpoints, HTTP server, public webhooks, or API authentication contract are implemented.
 
-## Future API Surface
+The current operator interfaces are the [CLI and remote commands](../commands.md). Telegram Bot API and Discord application commands are external platform integrations, not a Sentinel REST API.
 
-When a REST API is introduced, it should expose read-only equivalents of device status, alert history, and runtime health without bypassing `DeviceRegistry`, `AlertHistory`, or command authorization policy. No endpoint names or authentication contract are committed yet.
+A future API would need explicit authentication, query limits, and clear separation between live presence and durable inventory/history. Endpoint paths and compatibility guarantees are not defined.

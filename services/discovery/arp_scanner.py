@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import ipaddress
 import logging
 from datetime import timezone
 from typing import Iterable, List, Optional
 
 from .models import DiscoveredDevice
+from .scanner import expand_targets
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +48,6 @@ class ARPScanner:
         self._ARP = ARP
         self._scapy_available = _scapy_available
 
-    def _expand_targets(self) -> List[str]:
-        if self._ips is not None:
-            return self._ips
-        try:
-            net = ipaddress.ip_network(self._target_network, strict=False)
-        except Exception as e:
-            logger.error("invalid target network %s: %s", self._target_network, e)
-            return []
-        return [str(ip) for ip in net.hosts()]
-
     def scan(self) -> List[DiscoveredDevice]:
         """Perform an ARP scan and return discovered devices.
 
@@ -66,7 +56,7 @@ class ARPScanner:
         """
         # Expand targets first so invalid CIDR is handled without requiring
         # scapy to be installed (useful for unit tests that mock `srp`).
-        targets = self._expand_targets()
+        targets = expand_targets(self._target_network, self._ips, logger)
         devices: List[DiscoveredDevice] = []
 
         if not targets:

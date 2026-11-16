@@ -1,7 +1,19 @@
 # Networking
 
-The current Sentinel runtime is a single Python process. Discovery sends ICMP and/or ARP probes to configured LAN targets. The ZTE client communicates with the configured `ZTE_ROUTER_URL`. Alert providers use outbound HTTPS to Discord webhooks and the Telegram Bot API. Telegram commands use HTTPS long polling; Discord commands use the Discord Gateway and application-command API.
+Sentinel opens no inbound HTTP listener or fixed application service port.
 
-No inbound HTTP listener, REST API, public webhook endpoint, reverse proxy, or fixed Sentinel service port is currently implemented. The command service works behind normal NAT because Telegram uses polling and Discord uses its outbound Gateway connection.
+| Path | Network use |
+| --- | --- |
+| ICMP discovery | System ping to selected addresses |
+| ARP discovery | Scapy raw packets on the local link |
+| Hostname enrichment | PTR, Windows NetBIOS, mDNS; no implemented LLMNR reverse query |
+| ZTE collection | Requests to `ZTE_ROUTER_URL` |
+| Discord notifications/commands | Outbound webhook HTTPS, Gateway, application-command API |
+| Telegram notifications/commands | Outbound Bot API HTTPS and `getUpdates` long polling |
+| PostgreSQL | Outbound database connection when selected |
 
-ARP may require raw-network privileges. Credentials and tokens are environment-based and must not be logged. A Telegram bot token should normally have only one active `getUpdates` consumer; competing consumers cause Telegram HTTP 409 conflicts.
+ARP needs packet access and cannot discover across routers; Windows may require a suitable packet-capture driver. ICMP can be blocked. Hostname enrichment is opt-in. SQLite needs no database network service.
+
+The integrated ZTE client currently sets `verify_tls=False`; TLS verification is not exposed as a runtime environment option. Keep this implementation detail in mind when selecting the router connection.
+
+Only one Telegram polling consumer should use a token. Discord/Telegram adapters share the monitoring process and normally work behind NAT. There is no REST ingress, reverse-proxy configuration, traffic forwarding, IDS, or firewall enforcement in this implementation.

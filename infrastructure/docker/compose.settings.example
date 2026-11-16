@@ -1,0 +1,13 @@
+# Nonsecret deployment settings. Keep credential files outside the checkout.
+SENTINEL_IMAGE=sentinel:local
+SENTINEL_UID=10001
+SENTINEL_GID=10001
+SENTINEL_SCOPE=lab
+SENTINEL_COLLECTOR_ID=pi-container
+SENTINEL_HOST_IP=198.51.100.5
+# Set the actual numeric systemd-journal group ID from the Pi.
+SENTINEL_JOURNAL_GID=REPLACE_WITH_HOST_GROUP_ID
+# Select an existing persistent or volatile journal root on the Pi.
+SENTINEL_JOURNAL_DIRECTORY=/var/log/journal
+SENTINEL_RUNTIME_CONFIG=/etc/sentinel/container-runtime.conf
+SENTINEL_COLLECTOR_CONFIG=/etc/sentinel/container-collector.conf

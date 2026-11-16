@@ -16,8 +16,10 @@ class NotificationError(RuntimeError):
     pass
 
 
-def _safe_response_body(body: bytes) -> str:
-    text = body.decode("utf-8", errors="replace").replace("\r", " ").replace("\n", " ").strip()
+def _safe_response_body(body: bytes | str) -> str:
+    # HTTPError with no response stream uses StringIO on Python 3.11.
+    text = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else body
+    text = text.replace("\r", " ").replace("\n", " ").strip()
     if len(text) > 300:
         text = text[:300] + "..."
     return text or "<empty>"
@@ -124,9 +126,7 @@ class TelegramNotificationProvider(NotificationProvider):
             f"{alert.message}\n\nTime: {fields['timestamp']}\n"
             f"Severity: {alert.severity.value}\nType: {alert.alert_type.value}"
         )
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        request = Request(url, data=json.dumps({"chat_id": self.chat_id, "text": text}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
-        self._post(request)
+        self._send_text(text)
 
     def send_test(self) -> None:
         if not self.bot_token or not self.chat_id:
@@ -170,7 +170,7 @@ class NotificationManager:
                 logger.info("Notification sent: provider=%s alert=%s", provider.name, alert.alert_id)
                 results[provider.name] = True
             except Exception as exc:
-                logger.error("Notification failed: provider=%s error=%s", provider.name, exc)
+                logger.error("Notification failed: provider=%s error=%s", provider.name, type(exc).__name__)
                 results[provider.name] = False
         return results
 
@@ -184,7 +184,7 @@ class NotificationManager:
                 provider.send_test()
                 results[provider.name] = True
             except Exception as exc:
-                logger.error("Connectivity test failed: provider=%s error=%s", provider.name, exc)
+                logger.error("Connectivity test failed: provider=%s error=%s", provider.name, type(exc).__name__)
                 results[provider.name] = False
         return results
 

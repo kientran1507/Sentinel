@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Small CLI wrapper to run the ICMP discovery scanner.
-
-Usage examples:
-  python scripts/discover.py 192.168.2.0/30 --concurrency 10 --timeout 1
-  python scripts/discover.py 192.168.2.0/24 --csv results.csv
-
-This script intentionally reuses the `ICMPScanner` and `DiscoveredDevice` model
-so results remain consistent with the rest of the codebase.
-"""
+"""ICMP/ARP discovery CLI with optional orchestration, enrichment, and storage."""
 import argparse
 import json
 import csv
@@ -34,24 +26,17 @@ except ModuleNotFoundError:
     from services.discovery.arp_scanner import ARPScanner
     from services.discovery.orchestrator import DiscoveryOrchestrator
 
+from services.logging_config import configure_logging
+
 
 def to_dict(dev: DiscoveredDevice) -> dict:
-    if not isinstance(dev, DiscoveredDevice):
-        # Fallback for duck-typed objects
-        return {
-            "ip_address": getattr(dev, "ip_address", None),
-            "mac_address": getattr(dev, "mac_address", None),
-            "hostname": getattr(dev, "hostname", None),
-            "discovery_source": getattr(dev, "discovery_source", None),
-            "discovered_at": getattr(dev, "discovered_at", None).isoformat() if getattr(dev, "discovered_at", None) else None,
-        }
-
+    discovered_at = getattr(dev, "discovered_at", None)
     return {
-        "ip_address": dev.ip_address,
-        "mac_address": dev.mac_address,
-        "hostname": dev.hostname,
-        "discovery_source": dev.discovery_source,
-        "discovered_at": dev.discovered_at.isoformat(),
+        "ip_address": getattr(dev, "ip_address", None),
+        "mac_address": getattr(dev, "mac_address", None),
+        "hostname": getattr(dev, "hostname", None),
+        "discovery_source": getattr(dev, "discovery_source", None),
+        "discovered_at": discovered_at.isoformat() if discovered_at else None,
     }
 
 
@@ -73,6 +58,8 @@ def main(argv=None):
     p.add_argument("--iface", type=str, default=None, help="Interface to use for ARP (optional)")
     p.add_argument("--arp-timeout", type=int, default=2, help="ARP probe timeout in seconds")
     p.add_argument("--orchestrator", action="store_true", help="Use DiscoveryOrchestrator to coordinate scanners and merge results")
+    p.add_argument("--resolve-hostnames", action="store_true", help="Resolve hostnames after scanner results are merged")
+    p.add_argument("--persist", action="store_true", help="Persist discovery observations using the explicitly configured backend")
     args = p.parse_args(argv)
 
     target = args.target
@@ -89,7 +76,17 @@ def main(argv=None):
         methods = [args.method] if args.method in ("icmp", "arp") else ["arp", "icmp"]
         icmp_kwargs = {"concurrency": args.concurrency, "ping_timeout": args.timeout}
         arp_kwargs = {"timeout": args.arp_timeout, "iface": args.iface}
-        orch = DiscoveryOrchestrator(ips, methods=methods, icmp_kwargs=icmp_kwargs, arp_kwargs=arp_kwargs)
+        observation_sink = None
+        hostname_resolver = None
+        if args.resolve_hostnames:
+            from services.discovery.hostname_resolver import HostnameResolver
+            hostname_resolver = HostnameResolver(timeout=args.timeout, concurrency=args.concurrency)
+        if args.persist:
+            from services.storage import PersistingDiscoverySink, RuntimePersistence, PostgreSQLStorage, SQLiteStorage, get_network_scope, get_storage_backend
+            storage = PostgreSQLStorage() if get_storage_backend() == "postgresql" else SQLiteStorage()
+            storage.initialize()
+            observation_sink = PersistingDiscoverySink(RuntimePersistence(storage, get_network_scope()))
+        orch = DiscoveryOrchestrator(ips, methods=methods, icmp_kwargs=icmp_kwargs, arp_kwargs=arp_kwargs, observation_sink=observation_sink, hostname_resolver=hostname_resolver)
         devices = orch.scan()
     else:
         icmp_devices = []
@@ -131,4 +128,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    configure_logging()
     main()

@@ -1,66 +1,37 @@
-# Sentinel Overview
+# Architecture Overview
 
-Sentinel is a self-hosted Python system for LAN discovery, ZTE client monitoring, presence transitions, alerting, and authorized operator commands. The implemented runtime is intentionally lightweight and in-process; REST APIs, a database, dashboard, and metrics backend are future extensions rather than current services.
+Sentinel is a modular Python application for LAN discovery, ZTE H3601P presence monitoring, durable inventory, alerts, and authorized commands. The integrated runtime is one process, assembled in [scripts/sentinel.py](../../scripts/sentinel.py).
 
-## Implemented Runtime
+CLI workflows share backend selection through `create_storage()`. The caller owns initialization and cleanup. ZTE polling workflows share router option validation through `router_options()`. ARP and ICMP scanners share target expansion while retaining separate probing and failure handling.
 
-- LAN device discovery and hostname enrichment
-- Continuous ZTE H3601P client monitoring
-- Online/offline/recovery transition detection
-- Alert routing to Discord and Telegram
-- Authorized operator commands through Discord and Telegram
+```text
+ZTECollector -> PersistingCollector -> PresenceTracker -> DeviceRegistry
+                       |                    |
+                       v                    v
+                    SQL storage        DeviceEvent -> EventBus -> AlertEngine
+                       ^                    |                         |
+                       |              persisted event          live alert history
+                       |                                              |
+                       +---------------- persisted alert <------------+
+                                                                      |
+                                                             notifications
 
-## Architecture
+ARP/ICMP -> DiscoveryOrchestrator -> optional hostname resolver -> results
+                     +---------- optional persistence sink ----------> SQL
 
-| Component | Responsibility |
-| --- | --- |
-| `DiscoveryOrchestrator` | Coordinates `ARPScanner` and `ICMPScanner` and merges `DiscoveredDevice` records. |
-| `HostnameResolver` | Enriches discovered records with bounded hostname lookups. |
-| `DeviceRegistry` | Holds canonical `ZTEDevice` state for the runtime. |
-| `ZTECollector` / `ZTEMonitor` | Collects router clients and polls at a configured interval. |
-| `PresenceTracker` | Applies state transitions and offline threshold/debouncing. |
-| `EventBus` | Delivers typed events to independent subscribers. |
-| `AlertEngine` | Maps events to typed alerts and optional history/notifications. |
-| `NotificationManager` | Isolates Discord webhook and Telegram provider failures. |
-| `CommandHandler` | Authorizes and serves `/help`, `/devices`, `/status`, and `/alerts`. |
-| `CommandService` | Runs Telegram polling and Discord Gateway adapters. |
-
-```mermaid
-flowchart TB
-    A[Discovery] --> B[DeviceRegistry]
-    B --> C[PresenceTracker]
-    C --> D[DeviceEvent]
-    D --> E[EventBus]
-    E --> F[AlertEngine]
-    F --> G[AlertHistory]
-    F --> H[NotificationManager]
-    H --> I[Discord webhook]
-    H --> J[Telegram Bot API]
-    B --> K[CommandHandler]
-    G --> K
-    K --> L[Discord slash commands]
-    K --> M[Telegram polling]
+CommandHandler <- live registry/history + durable assets/history
+       |
+Discord slash commands / Telegram polling
 ```
 
-All components share one runtime object graph in `sentinel start`. Command renderers read structured command data and do not trigger scans.
+ZTE snapshots are persisted before presence processing. Discovery is a separate CLI workflow and does not populate the integrated registry. Both paths can write through the same repository boundary.
 
-## Data Flow
+The ZTE collector publishes parsed DHCP/mesh evidence separately from merged inventory. The monitor's event callback independently writes legacy and canonical transition history before publishing the original event to the alert bus. The opt-in discovery sink also writes sightings and resolver evidence. Canonical ingestion performs read-only asset association and isolates failures; it does not republish events or generate additional notifications.
 
-1. Discovery or the ZTE collector produces device snapshots.
-2. `DeviceRegistry` and `PresenceTracker` update shared state.
-3. Transition events are published through `EventBus`.
-4. `AlertEngine` creates alerts and records them in bounded `AlertHistory`.
-5. `NotificationManager` sends independently to Discord and Telegram.
-6. `CommandHandler` reads the same registry/history for remote commands.
+The live registry owns current presence and debouncing. SQL retains inventory and history, but startup does not reconstruct live state. Remote `/devices` overlays live observations on durable assets; historical commands query SQL. Commands do not trigger discovery.
 
-## Configuration
+After each canonical commit, the in-process detection engine evaluates the saved event. ASSET-001 checks observed assets against inventory trust, and OPS-001 counts collector failures in configured UTC windows. NET-001/002/003 and AUTH-001/002 evaluate explicit traffic, authentication, and policy-labelled denial evidence through a scoped canonical import path. Findings and evidence links have independent persistence and audited resolution state. [Detection architecture](detection-engine.md)
 
-Router and notification/command credentials are environment-based. See [.env.example](../../.env.example) and [Commands](../commands.md). Secrets are not logged or committed. Discord webhook and Discord bot token have separate roles.
+The current runtime is configured for PostgreSQL, with migration, rollback, inventory, and history integration coverage. An unset backend still selects SQLite. See [storage](persistent-storage.md), [identity limits](asset-identity.md), and [components](components.md) for remaining verification gaps.
 
-## Deployment Status
-
-The supported development workflow is a Python virtual environment and one integrated process. Docker, K3s, and Raspberry Pi deployment are deployment targets, but complete packaged manifests and persistent storage are not currently implemented.
-
-## Future Work
-
-REST API, database persistence, dashboards, Prometheus/Grafana integration, SNMP, and distributed discovery remain future extensions.
+Milestone 2 implementation acceptance includes the [canonical event pipeline](security-events.md), observation/transition adapters, append-only ingestion, scoped retention maintenance, ZTE lifecycle/error/recovery reports with local health metrics, and [structured logs/redaction](../monitoring/logging.md). Retention is not scheduled or called by ingestion. REST APIs, dashboards, correlation, metrics export, gateway/IDS functions, and distributed service extraction remain future work. Docker/K3s packaging is not supplied. See [status](../PROJECT_STATUS.md) and [roadmap](../development/roadmap.md).
