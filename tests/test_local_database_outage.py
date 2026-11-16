@@ -16,7 +16,7 @@ class TestLocalDatabaseOutage(unittest.TestCase):
         self.path = Path(directory.name) / "outage.db"
         self.cluster = Mock(outage_stopped=False)
 
-        def stop():
+        def stop(*, immediate=False):
             self.cluster.outage_stopped = True
 
         def restart():
@@ -45,8 +45,27 @@ class TestLocalDatabaseOutage(unittest.TestCase):
         self.assertEqual(report["first_poll"]["accepted_count"], 2)
         self.assertEqual((report["unavailable_poll"]["accepted_count"], report["unavailable_poll"]["pending_count"]), (0, 3))
         self.assertEqual((report["recovered_poll"]["accepted_count"], report["recovered_poll"]["pending_count"]), (3, 0))
-        self.cluster.stop_for_outage.assert_called_once_with()
+        self.cluster.stop_for_outage.assert_called_once_with(immediate=False)
         self.cluster.restart_after_outage.assert_called_once_with()
+
+    def test_crash_and_clean_stop_keep_independent_evidence_for_the_same_run(self):
+        self.original_ingest = RuntimePersistence.ingest_security_event
+        with patch.object(RuntimePersistence, "ingest_security_event",
+                          lambda persistence, event: self.ingest_during_outage(persistence, event)):
+            for immediate, mode in ((False, "fast"), (True, "immediate")):
+                report = run_database_outage(self.cluster, self.factory, "same-run", immediate=immediate)
+                self.assertEqual(report["stop_mode"], mode)
+                self.assertEqual((report["stored_events"], report["findings"], report["replay"]), (5, 1, "passed"))
+        storage = self.factory()
+        storage.initialize()
+        runtime = RuntimePersistence(storage, network_scope="local-database-outage")
+        findings = runtime.findings.query(network_scope="local-database-outage")
+        self.assertEqual(len(findings), 2)
+        evidence = [set(event_id for event_id, event in runtime.findings.list_evidence(
+            finding.finding_id, network_scope="local-database-outage") if event is not None)
+                    for finding in findings]
+        self.assertEqual([len(ids) for ids in evidence], [5, 5])
+        self.assertFalse(evidence[0] & evidence[1])
 
     def test_failed_outage_assertion_still_restarts_the_owned_cluster(self):
         # Without an unavailable storage boundary, accepting writes cannot pass this test.

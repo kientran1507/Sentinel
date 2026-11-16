@@ -34,6 +34,24 @@ class TestLocalPostgresOwnership(unittest.TestCase):
         run.assert_not_called()
         remove.assert_not_called()
 
+    def test_redirected_root_or_data_is_refused_before_server_control(self):
+        original_resolve = Path.resolve
+        with tempfile.TemporaryDirectory() as directory:
+            foreign = Path(directory).resolve()
+            for redirected in (self.lab.root, self.lab.data):
+                def resolve(path, *args, **kwargs):
+                    return foreign if path == redirected else original_resolve(path, *args, **kwargs)
+
+                with self.subTest(path=redirected.name), \
+                        patch.object(Path, "resolve", autospec=True, side_effect=resolve), \
+                        patch.object(self.lab, "_run") as run, \
+                        patch("scripts.local_postgres.shutil.rmtree") as remove:
+                    self.lab.start_attempted = self.lab.initialized = self.lab.ready = True
+                    with self.assertRaises(LocalLabError):
+                        self.lab.close()
+                    run.assert_not_called()
+                    remove.assert_not_called()
+
     def test_native_command_capture_uses_files_not_background_server_pipes(self):
         def complete(command, **options):
             options["stdout"].write("completed\n")
@@ -111,6 +129,34 @@ class TestLocalPostgresOwnership(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertFalse(self.lab.outage_stopped)
 
+    def test_immediate_stop_is_explicit_and_verifies_the_owned_server(self):
+        for immediate, mode in ((False, "fast"), (True, "immediate")):
+            with self.subTest(mode=mode):
+                self.lab.ready = True
+                self.lab.outage_stopped = False
+                with patch.object(self.lab, "_run", side_effect=[SimpleNamespace(returncode=value)
+                                                                for value in (0, 0, 3)]) as run:
+                    self.lab.stop_for_outage(immediate=immediate)
+                self.assertEqual(run.call_args_list[1].args,
+                                 ("pg_ctl", "-D", self.lab.data, "-m", mode, "-w", "-t", "60", "stop"))
+                self.assertTrue(self.lab.outage_stopped)
+
+    def test_immediate_stop_cannot_bypass_ownership(self):
+        self.lab.ready = True
+        (self.lab.root / "owner.json").write_text('{"nonce":"foreign"}')
+        with patch.object(self.lab, "_run") as run:
+            with self.assertRaises(LocalLabError):
+                self.lab.stop_for_outage(immediate=True)
+        run.assert_not_called()
+
+    def test_unverified_immediate_stop_cannot_be_reported_as_stopped(self):
+        self.lab.ready = True
+        with patch.object(self.lab, "_run", side_effect=[SimpleNamespace(returncode=value)
+                                                        for value in (0, 0, 0)]):
+            with self.assertRaises(LocalLabError):
+                self.lab.stop_for_outage(immediate=True)
+        self.assertFalse(self.lab.outage_stopped)
+
     def test_verified_outage_restarts_same_data_directory_and_options(self):
         self.lab.ready = True
         self.lab.server_options = "-h 127.0.0.1 -p 65432"
@@ -141,6 +187,28 @@ class TestLocalPostgresOwnership(unittest.TestCase):
 
 
 class TestLocalLabCommand(unittest.TestCase):
+    def test_crash_check_is_opt_in_and_failure_still_cleans_up(self):
+        for enabled, fails in ((False, False), (True, False), (True, True)):
+            with self.subTest(enabled=enabled, fails=fails), tempfile.TemporaryDirectory() as directory:
+                cluster = Mock(version="fixture", settings={}, root=Path(directory) / "owned")
+                cluster.cleanup = {"stopped": True, "data_removed": True}
+                target = Path(directory) / "report"
+                outcomes = [{"status": "passed"}]
+                if enabled:
+                    outcomes.append(LocalLabError("crash verification failed") if fails else {"status": "passed"})
+                with patch("scripts.local_lab.LocalPostgreSQL", return_value=cluster), \
+                        patch("scripts.local_lab.run_checks", return_value={}), \
+                        patch("scripts.local_lab.run_database_outage", side_effect=outcomes) as outage:
+                    args = ["--output-dir", str(target)] + (["--crash-check"] if enabled else [])
+                    self.assertEqual(main(args, output=StringIO()), int(fails))
+                cluster.close.assert_called_once_with()
+                self.assertEqual(outage.call_count, 2 if enabled else 1)
+                if enabled:
+                    self.assertEqual(outage.call_args.kwargs, {"immediate": True})
+                report = json.loads((target / "report.json").read_text())
+                self.assertEqual(report["requested_checks"]["crash_check"], enabled)
+                self.assertEqual("database_crash" in report, enabled and not fails)
+
     def test_suite_uses_a_child_with_private_stdin_and_no_runtime_credentials(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "tests.log"
@@ -175,7 +243,7 @@ class TestLocalLabCommand(unittest.TestCase):
     def test_runtime_configuration_is_not_loaded_and_cleanup_failure_prevents_pass(self):
         for fails in (False, True):
             with self.subTest(cleanup_fails=fails), tempfile.TemporaryDirectory() as directory:
-                cluster = Mock(version="16-test", root=Path(directory) / "owned-fixture")
+                cluster = Mock(version="16-test", settings={}, root=Path(directory) / "owned-fixture")
                 cluster.cleanup = {"stopped": not fails, "data_removed": not fails}
                 if fails:
                     cluster.close.side_effect = RuntimeError("PRIVATE-CONNECTION")

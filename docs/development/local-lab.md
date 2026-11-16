@@ -18,6 +18,49 @@ existing PostgreSQL service running. On another machine, select an existing
 installation with `--pg-bin /path/to/postgresql/bin`. Missing binaries produce a
 failure report; no automatic download or installation occurs.
 
+## Offered-Rate Check
+
+Add `--load-check` to measure fixed arrival schedules inside the temporary local
+database. This is opt-in; the normal workflow remains unchanged.
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.local_lab --load-check --full-suite
+```
+
+| Stage | Events | Offered events/second | Expected new findings |
+| --- | ---: | ---: | ---: |
+| 1 | 57 | 10 | 5 |
+| 2 | 285 | 50 | 25 |
+| 3 | 570 | 100 | 50 |
+
+The probe adds at most 912 unique records and 80 findings, followed by one exact
+replay. Its event identities and scope are separate from the ordinary batch
+pilot. Each stage has a 30-second deadline checked before/after each event;
+replay has its own 30-second deadline. Database operations retain their connection
+and statement timeouts. Failed stages stop later work and retain completed-stage
+measurements in a failed report. No event is skipped to make a rate look healthy.
+
+One synchronous client schedules the first event one interval after stage start.
+When processing falls behind, later events run late instead of disappearing.
+Reports distinguish:
+
+- **Completed events/second:** count divided by stage wall time, including waits.
+- **Service latency:** time spent saving one event and evaluating detection.
+- **Scheduled latency:** time from intended arrival to completed detection,
+  including accumulated delay.
+- **Start lag:** delay between intended arrival and actual processing start;
+  `starts_one_interval_late` counts starts delayed by more than one rate interval.
+
+Latency percentiles use nearest ranks and milliseconds. Reports include the
+offered rate, input hash, maximum lag, retained counts, and replay result. A
+`passed` result verifies counts, findings, replay and test bounds. It does not
+assert a production latency objective; `capacity_acceptance` is `not_evaluated`.
+
+This profile reuses small independent synthetic collector groups. It does not
+model a long-running busy collector, large retained history, concurrent producers,
+or the Pi's resource limits. No saturation or production-capacity claim follows
+from these short local measurements.
+
 ## What Runs
 
 Each invocation creates a new native PostgreSQL cluster in an owned temporary
@@ -46,11 +89,56 @@ Progress records identify the current stage. The final console record gives
 the report path and cleanup outcome. No application environment-variable values
 or existing credentials are changed in the parent process.
 
+### Abrupt Database Interruption
+
+Add `--crash-check` to repeat the buffered-recovery scenario after an immediate
+stop of only the newly created lab server:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.local_lab --crash-check --load-check --full-suite
+```
+
+The normal clean-stop check still runs first. The additional check uses
+`pg_ctl -m immediate` against the owned temporary data directory, verifies the
+server has stopped, and restarts that same cluster with durability enabled.
+PostgreSQL performs crash recovery on restart. Two committed records must survive;
+three further records must remain buffered while storage is unavailable and
+persist after reconnect. Evidence, the resulting finding, and lifecycle state
+must remain unchanged on replay. Separate collector identities prevent the two
+outage checks from sharing evidence.
+
+The report records this additional result under `database_crash`, including the
+stop mode, unavailable/recovered polls, retained counts, and replay outcome.
+Failures still attempt owned-cluster recovery and final cleanup. Uncertain
+shutdown retains data rather than reporting a clean result. The existing database
+service is never targeted. This is a local database-process interruption, not a
+host power-loss, network-partition, Pi deployment, or pending-monitor-crash test.
+
 ## Reports and Cleanup
 
 Reports are saved in a new `dist/local-lab/<run ID>/report.json`; full runs also
 retain `tests.log` and `tests.json`. `dist` is Git-ignored. `--output-dir` can
 select another new report directory; existing targets are refused.
+
+### Report Provenance
+
+Each report identifies the code actually present in the working tree, including
+uncommitted changes. It records SHA-256 hashes for Python files under `services`,
+`scripts`, and `tests`, plus the available project build configuration and Docker
+dependency lock. A combined fingerprint covers the sorted path/hash map. CRLF
+line endings are normalized to LF for comparison across Windows and Linux.
+Runtime configuration, `.env`, databases, logs, and documentation are excluded.
+
+Reports also record the optional Git commit, selected installed dependency
+versions, requested checks, and effective PostgreSQL memory, durability, connection,
+and query-limit settings. A commit ID alone does not identify uncommitted code.
+Exported source bundles work without Git metadata.
+
+After database cleanup, the runner hashes the source again. Changed, added, or
+removed files, or failure to read the final snapshot, fail the report even when
+the checks passed. This compares start and end states; it does not freeze files
+or detect an edit restored between those checks. Keep code and dependencies
+unchanged throughout a run. Documentation can be updated separately.
 
 Pilot timings measure one client's canonical save plus strict detection per
 event, including commits. They report events/second and nearest-rank p50/p95/p99
@@ -65,10 +153,13 @@ synthetic source and leaves the PC's normal PostgreSQL service running. Restart
 uses the same owned data directory and server options, with a fresh connection
 verifying the server identity and retained baseline before retry. A failed outage
 assertion still attempts to restore the owned cluster. This is clean-stop
-recovery coverage, with crashes, network partitions, and Pi/load scenarios still
+recovery coverage, with host crashes, network partitions, and Pi/load scenarios still
 requiring separate acceptance.
 
-The runner verifies ownership before controlling its temporary cluster, requests
+The runner verifies ownership and the resolved root and database paths before
+any server-control command.
+This refuses redirected paths such as Windows junctions as well as symlinks.
+It requests
 a clean fast shutdown, waits up to 60 seconds, and verifies that PostgreSQL is no
 longer running before deleting its own temporary directory. It never stops a
 Windows service or targets another cluster. Failed/uncertain startup or shutdown

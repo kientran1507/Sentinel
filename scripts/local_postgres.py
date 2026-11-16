@@ -38,6 +38,7 @@ class LocalPostgreSQL:
         self.role = "sentinel_lab_" + self.nonce[:12]
         self.password = secrets.token_urlsafe(32)
         self.database_url = None
+        self.settings = {}
         self.start_attempted = False
         self.init_attempted = False
         self.initialized = False
@@ -46,10 +47,12 @@ class LocalPostgreSQL:
         self.cleanup = {"stopped": False, "data_removed": False}
 
     def _owned(self):
-        if (self.root != self._created_root or self.root.is_symlink()
+        if (self.root != self._created_root or self.root.resolve() != self._created_root
+                or self.root.is_symlink()
                 or self.root.parent != Path(tempfile.gettempdir()).resolve()
                 or not self.root.name.startswith("sentinel-local-lab-")
-                or self.data != self.root / "data" or self.data.is_symlink()
+                or self.data != self.root / "data" or self.data.resolve() != self._created_root / "data"
+                or self.data.is_symlink()
                 or (self.root / "owner.json").is_symlink()
                 or json.loads((self.root / "owner.json").read_text(encoding="utf-8")) != {"nonce": self.nonce}):
             raise LocalLabError("temporary cluster ownership check failed")
@@ -108,16 +111,20 @@ class LocalPostgreSQL:
             if Path(actual).resolve() != self.data.resolve():
                 raise LocalLabError("connected server does not belong to local lab")
             self.version = admin.execute("SHOW server_version").fetchone()[0]
+            for name in ("shared_buffers", "work_mem", "maintenance_work_mem", "max_connections",
+                         "max_wal_size", "fsync", "synchronous_commit", "statement_timeout", "lock_timeout"):
+                self.settings[name] = admin.execute("SHOW " + name).fetchone()[0]
             admin.execute("CREATE DATABASE sentinel_local_lab")
         self.database_url = make_conninfo(**connection, dbname="sentinel_local_lab")
 
-    def stop_for_outage(self):
+    def stop_for_outage(self, *, immediate=False):
         self._owned()
         if not self.ready or self.outage_stopped:
             raise LocalLabError("outage check requires the running owned cluster")
         if self._run("pg_ctl", "-D", self.data, "status", timeout=5).returncode != 0:
             raise LocalLabError("owned server not running before outage check")
-        stopped = self._run("pg_ctl", "-D", self.data, "-m", "fast", "-w", "-t", "60", "stop", timeout=65)
+        mode = "immediate" if immediate else "fast"
+        stopped = self._run("pg_ctl", "-D", self.data, "-m", mode, "-w", "-t", "60", "stop", timeout=65)
         if stopped.returncode or self._run("pg_ctl", "-D", self.data, "status", timeout=5).returncode != 3:
             raise LocalLabError("owned outage stop unverified")
         self.outage_stopped = True

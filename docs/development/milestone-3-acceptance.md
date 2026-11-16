@@ -19,6 +19,9 @@ and labelled-review tools are published review source beyond the accepted Pi ima
 
 The remaining sign-off requires:
 
+On 2026-11-15 the owner explicitly deferred live checks and requested completion
+of local work. The gates below remain pending; this deferral does not waive them.
+
 - [ ] Labelled live NET-001/002 observations from an approved connection producer,
   with endpoint visibility and negative controls verified.
 - [ ] Live AUTH-001/002 scenarios from approved sources/accounts, with distinct
@@ -38,10 +41,91 @@ and verifying finding/evidence/state after replay. This supplies local
 clean-stop recovery evidence. Representative Pi/load, crash, network partition,
 and live source-gap coverage remain part of the open gate above.
 
+The opt-in local `--load-check` adds short, fixed 10/50/100-event-per-second
+stages with explicit service/scheduled latency, start lag, retained-count/replay
+checks, and deadlines. This provides repeatable local offered-rate measurements.
+No production latency objective or saturation threshold is inferred, and the
+Pi capacity gate remains open.
+[Probe profile and limits](local-lab.md#offered-rate-check)
+
+The additional opt-in `--crash-check` verifies WAL recovery after immediately
+stopping only the disposable native lab database. It checks committed records,
+buffered recovery, evidence, lifecycle state, and replay separately from the clean
+stop case. This supplies local database-process interruption coverage; host
+power loss, network partition, live source gaps, and representative Pi results
+remain open. [Abrupt interruption procedure](local-lab.md#abrupt-database-interruption)
+
 The local checkout cannot establish these host measurements or supply the missing
 source and policy approvals. Keep the existing runtime running while the owner
 and Pi operator prepare those inputs. Do not close the milestone or start its
 dependent rollout based solely on synthetic regression results.
+
+## November 15–16 Pi Readiness Checkpoint
+
+The owner supplied successful host-console results for the following checks.
+These establish readiness and synthetic behavior; no live SSH attempt is recorded.
+
+| Check | Recorded result | Boundary |
+| --- | --- | --- |
+| Accepted runtime | Pinned image running with zero automatic restarts; CLI and dependency checks passed | Point-in-time inspection, not continuous health certification |
+| Database freshness | PostgreSQL schema 5; fresh DHCP and mesh evidence in scope `default` | Read-only queries; no migration performed |
+| Mounted SSH journal preview | Three completed polls, each with 3 events, 6 ignored and 0 rejected; no pending/dropped records; clean exit 0 | Preview without apply; repeated observations are not nine unique events |
+| Original synthetic SSH workflow | Accepted container imported 7 failures and 1 success, retained one AUTH-002, and preserved full payload/lifecycle/evidence on replay | Disposable SQLite, synthetic input, no AUTH-001 positive or live-source claim |
+| Disposable SSH image | Built Linux ARM64 image `sha256:a72c3e36dd35d5d1522528aef26a76116610985d51ec325d014bd697409e2026`; static audit passed | Local image export inspection; no listening server or authentication test |
+| Original lab preparation | Disposable files prepared; owner-run network-disabled `sshd -t/-T` checks passed for all three original source contexts | Management SSH untouched; target startup and attempts excluded |
+| Namespace variant | Manifest, local collision preflight, network-disabled variant configuration, and accepted-image synthetic checks passed | No namespace or target created; external allocation and live reachability unproved |
+
+The disposable image's package inventory matched its installed package database.
+OpenSSH server/client version was `1:9.2p1-2+deb12u10`; no host-key artifacts were
+found in its exported layers. The static report SHA-256 was
+`07c50060fe8ac7dc8b81166645f1046664ad28d05af6a26cc52edffa79c1d979`.
+The auditor relies on a trusted local export; it is not independent layer or
+supply-chain attestation.
+
+The namespace variant replaces the iPhone with a proposed Pi network namespace.
+It tests three distinct source addresses, not three physical devices or external
+LAN paths. Windows independently verified its archive SHA-256
+`7b78bcd9a0180c642e4bb114f738739a69856c21c8ab0c545a63b9673dbd4f40`,
+manifest, 20 offline tests, shell syntax, and actual SQLite detection/replay.
+The owner-run variant synthetic verification SHA-256 was
+`674f6e40c21eaead696b36ab0128f125f42e0265521a341352781ae4f59de618`.
+
+The bounded ban-policy review found no authentication-triggered management ban
+within its inspected scope, with specific unreadable configuration retained as
+residual uncertainty. The subsequent allocation evidence below narrows the
+remaining uncertainty to default pools and external reservations. Namespace setup,
+target startup and the proposed seven-failure/one-success run remain pending.
+iPhone client controls remain unverified separately. The proposed run tests
+AUTH-002 only and does not close any other live or workload gate.
+
+The subsequent owner-console allocation collector completed with all recorded
+per-check exits, collector exit and report-write exit equal to zero. Its saved
+report was read directly through the Pi bridge. Explicit allocations were
+disjoint from the proposed test subnet: Docker bridge networks in
+`172.17.0.0/16` through `172.22.0.0/16`, Kubernetes node Pod allocation
+`10.42.0.0/24`, ServiceCIDR `10.43.0.0/16`, and WireGuard interface subnet
+`10.8.0.0/24`. A separate owner-console read of the selected Flannel runtime
+fields confirmed the full Pod network `10.42.0.0/16` with IPv4 enabled. The
+saved result was read directly through the bridge; no repeated inventory was
+needed. None of those explicit ranges overlaps `10.203.77.0/30`.
+
+The Docker default-pool query returned null; it did not enumerate reserved
+defaults. External/router reservations remain unconfirmed. These limits do not
+invalidate the completed checks or establish blanket allocation freedom.
+Do not rerun passed checks merely because an unrelated permission is denied.
+
+The next execution decision is limited to the reviewed namespace setup,
+route-only validation and guarded cleanup, after the owner resolves or explicitly
+reviews the remaining allocation uncertainty. The current setup script requires
+allocation confirmation; do not pass that flag as though unknown reservations
+were verified. Target startup and the seven-failure/one-success attempt budget
+remain separate, pending actions. The variant validates three source addresses;
+it does not require completing the independent iPhone client review.
+
+On November 16 the owner connected the Pi through the desktop SSH bridge and
+authorized direct chat coordination. File review and result collection can now
+use that bridge. The Pi agent's Docker/protected-host execution restrictions
+remain in force; direct coordination does not grant additional execution rights.
 
 ## Verified Implementation
 

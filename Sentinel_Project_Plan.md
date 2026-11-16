@@ -93,6 +93,10 @@ Status is in progress from 2026-11-09. The [detection engine](docs/architecture/
 - [x] Validate all five activity scenarios inside the deployed container and record a 30-minute normal-workload observation with retained evidence and healthy polls.
 - [x] Complete owner-approved recovery-only Phase 1 against isolated PostgreSQL: six process-local fault cases, retained evidence/replay, explicit overflow loss, clean test-container exit, and production guards. Real outage and throughput acceptance remain open.
 - [x] Add and execute a one-command native local PostgreSQL lab for detection, controlled recovery, a capped 912-event pilot/replay, actual owned-server stop/restart with buffered recovery, and the full regression suite, with verified temporary cluster cleanup and no runtime/Pi configuration access.
+- [x] Add opt-in local offered-rate measurement with fixed event/rate caps, service/scheduled latency, start lag, deadlines, retained counts, and replay checks. Representative Pi capacity and saturation acceptance remain open.
+- [x] Record local lab source fingerprints, dependency versions, and effective database settings; reject source differences between the beginning and end of a run.
+- [x] Add opt-in abrupt interruption of only the disposable local database, with WAL recovery, retained commits, buffered ingestion, and finding/evidence/state replay checks. Representative Pi and host/network failure acceptance remain open.
+- [x] Review and validate a separate namespace-source SSH acceptance plan with offline tests, network-disabled configuration/synthetic checks, and selected host allocation evidence. Namespace setup and live attempts remain pending; this does not close live AUTH-002 acceptance.
 - [ ] Complete labelled false-positive review, throughput/saturation, source-gap/failure acceptance, and remaining live activity sources.
 - [ ] Validate live telemetry adapters, gateway policy attribution, labelled lab scenarios, and false-positive tuning for activity rules.
 

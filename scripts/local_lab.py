@@ -15,6 +15,8 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from scripts.local_postgres import LocalLabError, LocalPostgreSQL
+from scripts.lab_provenance import changed_files, git_head, package_versions, source_snapshot
+from scripts.local_load import run_load_check
 from scripts.prepare_activity_pilot import build_pilot
 from scripts.validate_detection import build_scenarios, validate_scenarios
 from scripts.validate_host_recovery import fixture_events, retained_records, validate_recovery
@@ -75,8 +77,9 @@ def run_pilot(storage, run_id):
             "measurement": "single-client save plus strict detection; initialization and replay excluded"}
 
 
-def run_database_outage(cluster, factory, run_id):
-    scope, collector = "local-database-outage", "outage-" + run_id
+def run_database_outage(cluster, factory, run_id, *, immediate=False):
+    mode = "immediate" if immediate else "fast"
+    scope, collector = "local-database-outage", "outage-" + mode + "-" + run_id
     events = fixture_events(scope, collector)
     monitor = HostMonitor(("ssh",), scope=scope, collector=collector, pending_limit=5,
                           storage_factory=factory,
@@ -86,7 +89,7 @@ def run_database_outage(cluster, factory, run_id):
         require((first.accepted_count, first.pending_count) == (2, 0), "outage baseline progress mismatch")
         require(not retained_records(factory, scope, collector, events[:2]), "outage premature finding")
         try:
-            cluster.stop_for_outage()
+            cluster.stop_for_outage(immediate=immediate)
             monitor.collect = lambda source, **options: HostCollection(source, "available", events[2:])
             began = time.perf_counter()
             unavailable = monitor.poll_once()
@@ -114,8 +117,9 @@ def run_database_outage(cluster, factory, run_id):
         return {"status": "passed", "stored_events": 5, "findings": len(findings),
                 "first_poll": first.to_dict(), "unavailable_poll": unavailable.to_dict(),
                 "recovered_poll": recovered.to_dict(), "replay": "passed",
+                "stop_mode": mode,
                 "unavailable_poll_seconds": failure_seconds,
-                "boundary": "actual clean stop/restart of owned local PostgreSQL; synthetic source input"}
+                "boundary": "owned local PostgreSQL stop/restart; synthetic source; no host crash or network partition"}
     finally:
         require(monitor.close() is None, "outage monitor cleanup failed")
 
@@ -175,6 +179,8 @@ def main(argv=None, *, output=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pg-bin", help="Existing PostgreSQL binary directory")
     parser.add_argument("--full-suite", action="store_true", help="Also run all tests against the disposable cluster")
+    parser.add_argument("--load-check", action="store_true", help="Also measure capped 10/50/100 event-per-second stages")
+    parser.add_argument("--crash-check", action="store_true", help="Also immediately stop only the owned cluster and verify WAL recovery")
     parser.add_argument("--output-dir", help="New report directory; default is dist/local-lab/<run ID>")
     args = parser.parse_args(argv)
     run_id = uuid4().hex
@@ -189,18 +195,44 @@ def main(argv=None, *, output=None):
               "platform": platform.system(), "started_utc": datetime.now(timezone.utc).isoformat(),
               "boundary": "temporary native loopback PostgreSQL; no runtime configuration or Pi access"}
     cluster = None
+    source_root = Path(__file__).resolve().parents[1]
+    snapshot = None
     def progress(stage):
         report["stage"] = stage
         print(json.dumps({"stage": stage, "run_id": run_id}), file=output, flush=True)
 
     try:
+        snapshot = source_snapshot(source_root)
+        report["source"] = {**snapshot, "git_head": git_head(source_root),
+                            "working_tree_included": True}
+        report["package_versions"] = package_versions()
+        report["requested_checks"] = {"load_check": args.load_check, "full_suite": args.full_suite,
+                                      "crash_check": args.crash_check}
         cluster = LocalPostgreSQL(args.pg_bin)
         progress("starting-local-postgresql")
         cluster.start()
         report["postgresql"] = cluster.version
+        report["postgresql_settings"] = dict(cluster.settings)
         report.update(run_checks(lambda: PostgreSQLStorage(cluster.database_url), run_id, progress=progress))
         progress("owned-database-outage")
         report["database_outage"] = run_database_outage(cluster, lambda: PostgreSQLStorage(cluster.database_url), run_id)
+        if args.crash_check:
+            progress("owned-database-crash-recovery")
+            report["database_crash"] = run_database_outage(
+                cluster, lambda: PostgreSQLStorage(cluster.database_url), run_id, immediate=True)
+        if args.load_check:
+            progress("rate-controlled-local-load")
+            report["load_check"] = {"status": "running", "phases": []}
+
+            def measured(phase):
+                report["load_check"]["phases"].append(phase)
+                print(json.dumps({"stage": "load-phase-completed", **phase}), file=output, flush=True)
+
+            storage = PostgreSQLStorage(cluster.database_url)
+            try:
+                report["load_check"] = run_load_check(storage, run_id, progress=measured)
+            finally:
+                storage.close()
         if args.full_suite:
             progress("full-test-suite")
             report["suite"] = run_suite(cluster.database_url, directory / "tests.log")
@@ -208,6 +240,8 @@ def main(argv=None, *, output=None):
         report["status"] = "passed"
     except Exception as exc:
         report["error_type"] = type(exc).__name__
+        if report.get("load_check", {}).get("status") == "running":
+            report["load_check"]["status"] = "failed"
         if isinstance(exc, LocalLabError):
             report["check"] = str(exc)
     finally:
@@ -219,6 +253,19 @@ def main(argv=None, *, output=None):
                 report["cleanup_error_type"] = type(exc).__name__
                 report["retained_directory"] = str(cluster.root)
             report["cleanup"] = cluster.cleanup
+        if snapshot is not None:
+            try:
+                after = source_snapshot(source_root)
+                changes = changed_files(snapshot, after)
+                report["source_unchanged"] = not changes
+                report["source_end"] = {"fingerprint_sha256": after["fingerprint_sha256"],
+                                        "git_head": git_head(source_root)}
+                if changes:
+                    report["status"] = "failed"
+                    report["changed_source_files"] = changes
+            except Exception as exc:
+                report["status"] = "failed"
+                report["source_check_error_type"] = type(exc).__name__
         report["environment_unchanged"] = dict(os.environ) == before
         if not report["environment_unchanged"]:
             report["status"] = "failed"

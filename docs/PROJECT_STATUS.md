@@ -1,6 +1,24 @@
 # Project Status
 
-Code review snapshot: 2026-11-15. This page records implementation boundaries, not deployment certification or a fixed test count.
+Code review snapshot: 2026-11-16. This page records implementation boundaries, not deployment certification or a fixed test count.
+
+The November 15–16 Pi readiness checkpoint adds owner-run runtime/database
+freshness checks, successful mounted-journal preview, accepted-image synthetic
+SSH import/replay, a static-verified disposable SSH image, and network-disabled
+lab configuration validation. A namespace-based third-source variant passed
+offline and accepted-image synthetic checks. Owner-console allocation evidence
+confirmed disjoint Docker, Kubernetes Service/Pod (including Flannel's full
+`10.42.0.0/16` network) and WireGuard ranges. Default-pool/external reservation
+uncertainty remains; namespace setup, target startup and live attempts are still
+pending. Direct Pi chat coordination now replaces manual review-file relay, while
+existing host execution restrictions remain unchanged.
+[Recorded evidence and limits](development/milestone-3-acceptance.md#november-1516-pi-readiness-checkpoint)
+
+The owner explicitly deferred live checks on 2026-11-15 and requested completion
+of local work. Milestone 3 remains open for the recorded Pi/live-source acceptance
+gates; no live source, policy, or production failure test is approved by that
+deferral. Local detection features and bounded regression workflows are available
+for review without changing the accepted Pi deployment.
 
 The owner reported Phase 1 recovery acceptance passed on the Pi under run identity
 `m3r-20261113-6a5e4f3-e46a2ca2`: six process-local fault cases against disposable
@@ -12,7 +30,7 @@ retained, and the single-run approval is consumed. This completes controlled
 recovery acceptance; real-outage, workload, and live-source gates remain open.
 [Phase 1 evidence record](development/milestone-3-acceptance.md#pi-phase-1-recovery-checkpoint)
 
-Latest development validation passed all 701 tests, including 193 PostgreSQL
+Latest development validation passed all 719 tests, including 193 PostgreSQL
 cases, with no skips. The controlled recovery harness covers six process-local
 fault scenarios against real storage, including an ambiguous committed write,
 explicit buffer loss, and finding/evidence/lifecycle preservation after replay.
@@ -26,8 +44,8 @@ testing, and throughput/false-positive acceptance remain open.
 [Recovery procedure](development/milestone-3-acceptance.md#controlled-recovery-check)
 
 The Windows checkout now has a one-command native PostgreSQL lab using its
-existing 16.3 binaries. `python -m scripts.local_lab --full-suite` passed detection,
-six recovery cases, the 912-event/80-finding pilot and replay, plus all 701 tests
+existing 16.3 binaries. `python -m scripts.local_lab --crash-check --load-check --full-suite` passed detection,
+six recovery cases, the 912-event/80-finding pilot and replay, plus all 719 tests
 with no skips. The child test process excludes runtime credentials and disables
 dotenv loading. Parent environment values remained unchanged; shutdown and
 temporary-data removal were verified, with the existing PostgreSQL service left
@@ -37,15 +55,50 @@ and child-process isolation. This local batch measurement leaves Pi sustained
 throughput, real outages, and live-source acceptance open.
 [Local lab workflow](development/local-lab.md)
 
+Local PostgreSQL ownership checks now verify the resolved temporary root and
+database paths before server control, including paths redirected by Windows
+junctions. A regression checks both redirections and requires rejection before
+any PostgreSQL command or recursive removal. This changes only disposable-lab
+control; application persistence and the accepted Pi deployment are unchanged.
+
 The lab also passed an actual clean stop/restart of its owned PostgreSQL server.
 Two committed records survived; three additional records stayed buffered during
 unavailability, persisted after reconnect, and produced one finding with retained
 evidence. Replay preserved finding payload/state and record counts. The full
-701-test run passed without skips; clean final shutdown, temporary-data removal,
+719-test run passed without skips; clean final shutdown, temporary-data removal,
 and unchanged parent environment were verified. The existing PostgreSQL service
 stayed running and no Pi resources were accessed. This closes the local clean-stop
 recovery check while representative Pi/load, crash, network partition, and live
 source acceptance remain open.
+
+Opt-in offered-rate measurements now add fixed 10/50/100-event-per-second
+stages with 57/285/570 events. The 2026-11-15 local run retained all 912 records
+and 80 findings, preserved replay, and reported no starts delayed by more than
+one rate interval. The 100-event/s stage completed approximately 99.9 events/s
+with scheduled p95 latency approximately 6.1 ms. These are short local samples,
+not sustained capacity or a Pi latency objective. Controlled-clock regressions
+verify pacing, backlog reporting, deadline failures, error propagation, and
+retention of completed measurements after a later phase fails. All 706 tests
+passed with 193 PostgreSQL cases and zero skips; owned cleanup and unchanged
+parent environment were verified. [Probe boundaries](development/local-lab.md#offered-rate-check)
+
+Local reports now identify working-tree source with normalized file hashes and a
+combined fingerprint, alongside optional Git metadata, selected dependency
+versions, requested checks, and effective PostgreSQL settings. A final source
+comparison runs after cleanup and fails the result on differences or read errors.
+Regression coverage verifies changed/deleted/added files, runtime-file exclusion,
+optional metadata, and failure reporting. This compares start and end states;
+it does not freeze source or certify the deployed Pi image.
+[Report provenance](development/local-lab.md#report-provenance)
+
+The opt-in abrupt-database check also passed against owned PostgreSQL 16.3.
+After `pg_ctl -m immediate`, committed evidence survived WAL recovery; three
+buffered records persisted after reconnect, producing one finding with stable
+evidence/state on replay. Clean and abrupt checks use independent collector
+identities. The full run passed 719 tests, including 193 PostgreSQL cases with
+zero skips. This supplies local database-process recovery evidence, leaving
+host power loss, network partition, representative Pi capacity, and live-source
+acceptance pending. [Procedure and bounds](development/local-lab.md#abrupt-database-interruption)
 
 Watcher shutdown now retains cumulative accepted, rejected, and buffer-drop
 counts plus source-status report counts across completed polls. Earlier coverage

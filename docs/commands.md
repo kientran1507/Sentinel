@@ -7,6 +7,15 @@ and an actual stop/restart check against its own temporary native PostgreSQL. Ad
 complete test suite. It loads no `.env` or configured backend connection.
 [One-command local lab](development/local-lab.md)
 
+Add `--load-check` for capped 10/50/100-event-per-second local stages with service
+latency, scheduled latency, and start-lag reporting. It uses only the disposable
+lab database, preserves records under lag, and stops on test deadlines or errors.
+[Measurement definitions and bounds](development/local-lab.md#offered-rate-check)
+
+Add `--crash-check` to verify recovery after an immediate stop of only the owned
+temporary PostgreSQL server. The default clean-stop check remains enabled.
+[Abrupt database interruption](development/local-lab.md#abrupt-database-interruption)
+
 The [Docker deployment](deployment/docker.md) runs the same commands from an
 installed package. Mounted journals use `--journal-directory /host/journal` on
 `host-snapshot` or `host-watch`. The integrated runtime and watcher both close
