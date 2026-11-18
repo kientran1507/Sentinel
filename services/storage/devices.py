@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Mapping, Optional
 
 from services.discovery.models import DiscoveredDevice, ZTEDevice

@@ -16,8 +16,10 @@ class NotificationError(RuntimeError):
     pass
 
 
-def _safe_response_body(body: bytes) -> str:
-    text = body.decode("utf-8", errors="replace").replace("\r", " ").replace("\n", " ").strip()
+def _safe_response_body(body: bytes | str) -> str:
+    # HTTPError with no response stream uses StringIO on Python 3.11.
+    text = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else body
+    text = text.replace("\r", " ").replace("\n", " ").strip()
     if len(text) > 300:
         text = text[:300] + "..."
     return text or "<empty>"
@@ -149,12 +151,17 @@ class TelegramNotificationProvider(NotificationProvider):
                     response_payload = json.loads(response.read().decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError):
                     raise NotificationError("Telegram returned an invalid response")
+                if not isinstance(response_payload, dict):
+                    raise NotificationError("Telegram returned an invalid response")
                 if response_payload.get("ok") is not True:
                     raise NotificationError("Telegram API rejected the request")
         except NotificationError:
             raise
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
-            raise NotificationError(f"Telegram request failed: {exc}") from exc
+        except HTTPError as exc:
+            raise NotificationError(f"Telegram request failed: HTTP {exc.code}") from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            # Transport errors can include the token-bearing request URL.
+            raise NotificationError("Telegram request failed: transport error") from exc
 
 
 class NotificationManager:

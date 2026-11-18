@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import http.cookiejar
 import io
-import json
-import logging
 import os
 import unittest
-from unittest.mock import MagicMock, patch
-import urllib.error
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -20,8 +16,6 @@ from services.discovery.zte_h3601p_client import (
     default_password_transform,
 )
 from services.discovery.zte_h3601p_parser import (
-    ZTEDHCPClient,
-    ZTEMeshClient,
     parse_dhcp_clients_xml,
     parse_mesh_topology,
 )

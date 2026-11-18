@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import RLock
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from .models import DeviceEvent, DeviceEventType
 

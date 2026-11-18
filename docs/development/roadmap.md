@@ -14,23 +14,44 @@ The [acceptance matrix](milestone-1-acceptance.md) verifies inventory identity, 
 
 The [acceptance matrix](milestone-2-acceptance.md) records completed implementation acceptance on 2026-11-04: canonical events, source observations, ZTE health, scoped retention on both backends, and structured JSON logs/redaction. Existing presence and alert behavior is preserved. Retention defaults to dry run without a runtime schedule or implicit age. Health snapshots and lifecycle history are not a general metrics exporter.
 
-## Milestone 3 In Progress
+## Milestone 3 Complete Within the Accepted Scope
 
-The [detection engine](../architecture/detection-engine.md) provides all seven planned rules, a registry, durable findings/evidence links, configurable thresholds and fixed windows, concurrent deduplication, and audited resolution. The [rule catalog](../monitoring/detection-rules.md) records exact grouping, thresholds, false positives, and validation.
+The [detection engine](../architecture/detection-engine.md) provides all seven
+planned rules, durable findings and evidence, thresholds and fixed windows,
+deduplication and audited resolution. Authorized operators use `/findings`,
+`/finding` and the resolution command. Existing device alerts remain separate.
+The [rule catalog](../monitoring/detection-rules.md) defines the exact policies.
 
-Authorized operators inspect scoped results with `/findings` and `/finding`, and resolve them with an audited reason. ASSET-001 v2 includes startup DHCP/mesh and opt-in ARP/ICMP findings. Command review accompanies existing legacy alert delivery. Scan/authentication/restricted-access rules now accept explicit canonical imports and pass controlled synthetic validation. Milestone 3 remains in progress for live adapters, approved gateway policy attribution, labelled lab scenarios, and false-positive tuning. [Activity ingestion](../architecture/activity-evidence.md)
+Bounded Pi acceptance completed on 2026-11-17: genuine disposable SSH outcomes,
+local accepted TCP and owner-approved equivalent user-space gateway decisions,
+labelled negative controls and full replay. Seven isolated operational cases and
+a fixed 256-event workload also passed. The [acceptance matrix](milestone-3-acceptance.md)
+and [Pi record](milestone-3-pi-acceptance-20261117.md) record the evidence and limits.
+This does not certify kernel firewall decisions, broad LAN/IDS visibility,
+sustained capacity, production outage recovery or automatic deployment.
 
-Both startup commands now expose bounded OPS-001 failure-count and window options. The [acceptance matrix](milestone-3-acceptance.md) records implemented coverage and the remaining completion gates.
+Read-only SSH journald/host counters and explicit `host-watch` preview/apply are
+implemented. Source/collector/scoped retention defaults to a 30-day preview.
+Bounded retries report capacity loss; process exit loses pending in-memory data.
+Production service configuration and retention scheduling stay owner-managed.
+[Host telemetry](../monitoring/host-telemetry.md)
 
-Read-only SSH journald and host counter adapters now provide one-shot canonical export/import, unavailable-source reporting, and protected-file input for least-privilege deployment. Host history has explicit source/collector/scoped retention with a configurable 30-day preview. Pi permissions, scheduling, real traffic/denial sources, and live acceptance remain deployment work. [Host telemetry](../monitoring/host-telemetry.md)
+## Next: Milestone 4 Alerting and Incident Management
 
-An explicitly invoked `host-watch` command now supplies periodic preview/apply collection, bounded process-local buffering, database recovery, and graceful service shutdown. Process exit loses pending buffer contents, and capacity drops are reported. Owner-managed service deployment and live Pi validation remain acceptance gates.
+Begin with a small, explicit acknowledgement workflow and its audit trail.
+Then define how related findings form an incident with a timeline, preserving
+original events and finding evidence. Notification retries/delivery history and
+storm prevention follow with isolated tests. Existing resolution behavior must
+remain compatible. These are planned steps, not implemented changes in this review.
 
-Before production reliance, separately validate backup/restore, upgrades with stopped writers, platform delivery, timeout behavior during real network partitions, retention, and deployment hardening. Durable retry queues and cross-backend import require explicit scope; neither is implicit fallback behavior.
+Before production reliance, separately validate backup/restore, upgrades with
+stopped writers, platform delivery, real network-partition timeouts, retention
+and deployment hardening. Durable retry queues and cross-backend import require
+explicit scope; neither is implicit fallback behavior.
 
 ## Later Capabilities
 
-The [web dashboard plan](web-dashboard-plan.md) captures proposed pages, layout editing, health semantics, and acceptance checks. It remains deferred after Milestone 2 acceptance; the plan does not reorder Milestones 3 through 5 or approve web dependencies.
+The [web dashboard plan](web-dashboard-plan.md) captures proposed pages, layout editing, health semantics, and acceptance checks. It remains Milestone 5 work after the alert/incident milestone; the plan does not reorder that sequence or approve web dependencies.
 
 Broader event-source ingestion/schema evolution, deterministic detection/correlation, REST API/dashboard, metrics export, additional collectors, and Docker/K3s packaging are future work.
 

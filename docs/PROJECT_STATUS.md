@@ -1,10 +1,10 @@
 # Project Status
 
-Code review snapshot: 2026-11-10. This page records implementation boundaries, not deployment certification or a fixed test count.
+Implementation review snapshot: 2026-11-10; bounded Pi acceptance closeout: 2026-11-17. This page records implementation and acceptance boundaries, not deployment certification or a fixed test count.
 
 ## Milestone Position
 
-Milestones 1 and 2 have completed implementation acceptance. Milestone 3 implements all seven planned rule IDs, a registry, durable findings/evidence, configurable fixed windows, deduplication, and audited operator resolution. Current inputs include startup/discovery sightings, collector failures, and explicit canonical activity imports. Live activity-source and lab acceptance remain in progress. [Detection architecture](architecture/detection-engine.md)
+Milestones 1 and 2 have completed implementation acceptance. Milestone 3 completed bounded detection-engine acceptance on 2026-11-17: all seven planned rule IDs, a registry, durable findings/evidence, configurable fixed windows, deduplication, and audited operator resolution. Genuine SSH and local TCP labs and the owner-approved equivalent user-space gateway policy passed, alongside isolated operational faults and replay. Current inputs include startup/discovery sightings, collector failures, and explicit canonical activity imports. Kernel firewall, LAN/IDS, sustained capacity and production outage certification remain outside this acceptance. [Pi results](development/milestone-3-pi-acceptance-20261117.md), [detection architecture](architecture/detection-engine.md)
 
 The Milestone 1 checkpoint closed inventory/history gaps with PostgreSQL migration 2 and SQLite schema 6. Milestone 2 adds PostgreSQL migration 3 / SQLite schema 7 for an empty canonical table and indexes, without backfilling legacy history. Only disposable databases were upgraded; runtime/local data and environment configuration were not modified.
 
@@ -39,6 +39,22 @@ Milestone 2 final acceptance on 2026-11-04 passed all 373 tests, including 83 Po
 
 Milestone 3 continued validation on 2026-11-10 passed all 600 tests, including 172 PostgreSQL cases, with no skips. Coverage includes rule/finding validation, current trust, scope/source isolation, fixed-window counting, late evidence, timestamp bounds, independent finding writers, lifecycle races, replay/restart, rollback, backend upgrades, monitor-to-finding-to-existing-alert behavior, and authorized/scoped finding lists/details with bounded platform rendering. Latest watch cases cover periodic preview/apply, bounded buffering, partial writes, connection recovery, duplicate replay, owned-storage cleanup, and restored SIGTERM handlers. Host cases cover SSH accepted/failed/PAM parsing, hashed identifiers, read-only command bounds, unavailable sources, counter validation, protected exports, scoped retention, and host CLI-to-finding flow on both backends. Other cases cover all five activity rules, distinct-value SQL on both backends, account/service/policy separation, concurrent ingestion, datetime limits, scoped import preflight, bounded input, conflicts, partial failures, and CLI-to-finding flow. Existing cases cover startup/discovery findings, version-1 history preservation, MAC-less promotion, audit migration/rollback, concurrent operator resolution, authenticated attribution, required/bounded reasons, platform rendering, unsupported schema rejection, paging, retention, and scope-safe evidence inspection. The frozen foundation and command snapshots were independently validated from frozen Git source archives with 441/113 and 451/118 total/PostgreSQL test counts respectively. Disposable PostgreSQL and temporary SQLite data provided the validation boundary. Source compilation, documentation links, whitespace, and protected-file checks passed.
 
+
+Source/package review on 2026-11-18 fixed service-package discovery, aligned the
+Python minimum to 3.10, removed dead state/imports/ARP fallback code, and added
+mocked Telegram error and ARP batching regressions. Offline wheel construction,
+core imports outside the checkout, syntax/compilation, local documentation links
+and retained acceptance manifests passed. Host discovery passed 108 tests with
+29 dependency-related import errors and no assertion failures. Owner accepted-image
+execution initially had one wrapper-induced default-path assertion failure, retained
+as history. The revised run passed all 436 non-PostgreSQL tests: 610 entries,
+174 PostgreSQL skips, zero failures/errors. Its single blocked bind is traced to
+Scapy's import-time AF_NETLINK interface enumeration; the guard denied it before
+OS execution. Unit/SQLite cleanup verification is closed. Live Scapy packet
+operations and a fresh PostgreSQL integration pass are outside this result. The [final review](development/milestone-3-final-review-20261118.md)
+records validation status and explains Milestone 2 versus Milestone 3. No source
+changes were deployed to the running accepted image.
+
 Known storage limits:
 
 - Asset MAC uniqueness and MAC lookup are global, including locally administered MACs.
@@ -51,11 +67,11 @@ See [asset identity](architecture/asset-identity.md) and [storage](architecture/
 
 ## Remaining Work
 
-The [Milestone 3 acceptance matrix](development/milestone-3-acceptance.md) maps implemented requirements to regression coverage and lists the remaining completion gates. Collector-failure thresholds and windows are configurable through both startup commands. Storage initialization reports newer unsupported schemas and releases the attempted connection while preserving stored data.
+The [Milestone 3 acceptance matrix](development/milestone-3-acceptance.md) maps implemented requirements to regression coverage and completed bounded gates. Collector-failure thresholds and windows are configurable through both startup commands. Storage initialization reports newer unsupported schemas and releases the attempted connection while preserving stored data.
 
-All seven planned rule IDs have implementation and controlled acceptance. Confirmed SSH journald and cumulative host-counter sources have read-only one-shot adapters and protected-file import paths. Live Pi acceptance still requires dedicated-account permissions, actual records and scheduling, a chosen traffic producer, verified individual firewall logging with approved policy attribution, and false-positive/throughput checks. Optional capture, firewall events, and conntrack remain unconfigured. Explicit canonical imports provide a supported evidence entry point while live collector and gateway work follows its roadmap scope. Acknowledgement, reopening, automatic closure, and incident workflows remain future lifecycle work.
+All seven planned rule IDs have implementation and controlled acceptance. Confirmed SSH journald and cumulative host-counter sources have read-only one-shot adapters and protected-file import paths. Bounded Pi acceptance used genuine disposable authentication, local accepted TCP and explicit equivalent gateway decisions; negative controls passed without threshold changes. No population false-positive rate or sustained throughput is established. Individual kernel firewall logging, capture and conntrack remain unconfigured for acceptance. Explicit canonical imports provide a supported evidence entry point while deployment and broader gateway/collector work follow their roadmap scope. Acknowledgement, reopening, automatic closure, and incident workflows remain future lifecycle work.
 
-Periodic source collection now has an explicit preview/apply command. Dedicated-account deployment and real Pi acceptance remain owner-managed. The in-memory retry buffer is bounded, reports overflow, and loses pending contents at process exit. Long collection gaps or saturated journal tails still need deployment-specific coverage validation.
+Periodic source collection now has an explicit preview/apply command. Dedicated-account production deployment remains owner-managed; bounded Pi labs did not replace or deploy the running runtime. The in-memory retry buffer is bounded, reports overflow, and loses pending contents at process exit. Long collection gaps or saturated journal tails still need deployment-specific coverage validation.
 
 Deployment work includes retention age/scheduling/audit decisions, coordinated finding/evidence retention, backup/restore, real network-partition timing, upgrades with stopped writers, live notification delivery, log collection/rotation, and deployment hardening. Additional collector health and external metrics/API access follow their roadmap scope.
 

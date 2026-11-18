@@ -1,7 +1,5 @@
-import subprocess
 import unittest
 import time
-from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 from services.discovery.scanner import ICMPScanner

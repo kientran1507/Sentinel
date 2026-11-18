@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
-import time
+from unittest.mock import MagicMock
 
-from services.discovery.models import ZTEDevice, DeviceEvent
+from services.discovery.models import ZTEDevice
 from services.discovery.device_registry import DeviceRegistry
 from services.discovery.presence_tracker import PresenceTracker
 from services.discovery.zte_collector import ZTECollector, normalize_mac

@@ -1,6 +1,6 @@
 # Activity Evidence and Explicit Import
 
-Milestone 3 accepts traffic, authentication-failure, and policy-labelled denial evidence through the canonical event contract. The default registry evaluates NET-001, NET-002, AUTH-001, AUTH-002, and NET-003 alongside ASSET-001 and OPS-001. Actual producer integration and live lab validation remain deployment gates.
+Milestone 3 accepts traffic, authentication-failure, and policy-labelled denial evidence through the canonical event contract. The default registry evaluates NET-001, NET-002, AUTH-001, AUTH-002, and NET-003 alongside ASSET-001 and OPS-001. Bounded genuine producer/lab acceptance completed on 2026-11-17 using disposable SSH, local accepted TCP and an owner-approved equivalent user-space gateway policy. Broader collection and production integration remain deployment work. [Acceptance scope](../development/milestone-3-pi-acceptance-20261117.md)
 
 ## Input Contract
 

@@ -2,13 +2,18 @@
 
 ## Unreleased
 
+- Fixed regular-package discovery so built distributions include the service modules, and aligned the Python minimum with the source (3.10).
+- Removed unused command-state flags and unreachable ARP fallback code; isolated ARP packet construction in unit tests.
+- Classified Telegram transport/HTTP failures without echoing token-bearing diagnostics and rejected malformed response objects consistently.
+- Completed bounded Milestone 3 Pi acceptance for SSH, local TCP and owner-approved equivalent gateway policy evidence, with replay and isolated fault checks; broader firewall/IDS and deployment coverage remain separate.
+- Removed unused internal imports and redundant placeholders from populated directories.
 - Added SQLite device, event, and alert repositories with historical queries and commands.
 - Added asset inventory, address summaries, observation records, vendor enrichment, and PostgreSQL initialization.
 - Added persistent inventory with a live-state overlay to the bot `/devices` command.
 - Added optional hostname enrichment to discovery persistence.
 - Added backend and network-scope configuration, an identity contract, and a storage ADR.
 
-These changes are implemented on the development branch. PostgreSQL verification and several identity, migration, and recovery requirements remain open; see [project status](docs/PROJECT_STATUS.md).
+These changes are implemented on the development branch. Historical disposable PostgreSQL/identity/migration acceptance and remaining production recovery/deployment limits are distinguished in [project status](docs/PROJECT_STATUS.md). No production rollout is implied.
 
 ## v0.1.0
 

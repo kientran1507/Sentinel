@@ -138,6 +138,57 @@ class ActivityDetectionContract:
         persistence.ingest_security_event(replace(first, event_id="denial-second"))
         self.assertEqual(len(persistence.findings.query()), 1)
 
+    def test_distributed_auth_counts_normalized_sources_not_attempts_or_successes(self):
+        persistence = self.activity_runtime("AUTH-002", threshold=3)
+        first = activity("distributed-first", kind=SecurityEventType.AUTHENTICATION_FAILURE,
+                         source_ip="2001:db8::1", metadata={"service": "ssh", "account": "lab-user"})
+        for index in range(12):
+            persistence.ingest_security_event(replace(
+                first, event_id=f"distributed-repeat-{index}",
+                source_endpoint=NetworkEndpoint("2001:0db8:0:0:0:0:0:1")))
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-second", source_endpoint=NetworkEndpoint("192.0.2.2")))
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-success", event_type=SecurityEventType.AUTHENTICATION_SUCCESS,
+            source_endpoint=NetworkEndpoint("192.0.2.3")))
+        self.assertEqual(persistence.findings.query(), [])
+        third = replace(first, event_id="distributed-third", source_endpoint=NetworkEndpoint("192.0.2.3"))
+        persistence.ingest_security_event(third)
+        finding = persistence.findings.query()[0]
+        evidence = persistence.findings.list_evidence(finding.finding_id, network_scope="lab")
+        self.assertEqual({event.source_endpoint.ip_address for _, event in evidence},
+                         {"2001:db8::1", "192.0.2.2", "192.0.2.3"})
+        self.assertTrue(all(event.event_type == SecurityEventType.AUTHENTICATION_FAILURE
+                            for _, event in evidence))
+        self.storage.close()
+        self.storage.initialize()
+        persistence = self.activity_runtime("AUTH-002", threshold=3)
+        persistence.ingest_security_event(third)
+        self.assertEqual(persistence.findings.query(), [finding])
+
+    def test_distributed_auth_does_not_combine_windows_scopes_or_collectors(self):
+        persistence = self.activity_runtime("AUTH-002", threshold=3)
+        start = NOW.replace(second=0)
+        first = activity("distributed-base", kind=SecurityEventType.AUTHENTICATION_FAILURE,
+                         timestamp=start, metadata={"service": "ssh", "account": "lab-user"})
+        persistence.ingest_security_event(first)
+        for index, changes in enumerate((
+                {"timestamp": start + timedelta(seconds=60)},
+                {"collector": "other-acceptance-collector"}, {"source": "other-sensor"})):
+            persistence.ingest_security_event(replace(
+                first, event_id=f"distributed-isolated-{index}",
+                source_endpoint=NetworkEndpoint("192.0.2.2"), **changes))
+        other = RuntimePersistence(self.storage, network_scope="other", detection_rules=(
+            ActivityRule("AUTH-002", threshold=3, window_seconds=60),))
+        other.ingest_security_event(replace(first, event_id="distributed-other-scope",
+                                            network_scope="other", source_endpoint=NetworkEndpoint("192.0.2.3")))
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-same-window-second", source_endpoint=NetworkEndpoint("192.0.2.2")))
+        self.assertEqual(persistence.findings.query(), [])
+        persistence.ingest_security_event(replace(
+            first, event_id="distributed-same-window-third", source_endpoint=NetworkEndpoint("192.0.2.3")))
+        self.assertEqual(len(persistence.findings.query()), 1)
+
     def test_activity_late_evidence_window_boundary_and_restart(self):
         persistence = self.activity_runtime("NET-001")
         start = NOW.replace(second=0)

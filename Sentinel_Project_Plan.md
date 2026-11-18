@@ -60,13 +60,13 @@ Status: implementation acceptance complete on 2026-11-04; see the [acceptance ma
 
 Candidate types include `asset.discovered`, `asset.updated`, `asset.online`, `asset.offline`, `asset.recovered`, `network.dhcp_observation`, `network.hostname_observation`, `network.mesh_observation`, and collector lifecycle/error events.
 
-Canonical ingestion and logs are best effort without durable replay queues. Health is process-local plus historical lifecycle reports. Retention requires explicit maintenance and deployment policy. Log rotation, external exporters, backup/restore, and live delivery drills remain operational/later-milestone work. Milestone 3 detection implementation is underway.
+Canonical ingestion and logs are best effort without durable replay queues. Health is process-local plus historical lifecycle reports. Retention requires explicit maintenance and deployment policy. Log rotation, external exporters, backup/restore, and live delivery drills remain operational/later-milestone work. Milestone 3's completed bounded detection scope is recorded below.
 
 ## Milestone 3: Detection Engine
 
 Build rule interfaces, a registry, configurable thresholds/time windows, deduplication, and an alert lifecycle. Document each rule's required telemetry, logic, severity, false positives, response, test scenario, and limitations.
 
-Status is in progress from 2026-11-09. The [detection engine](docs/architecture/detection-engine.md) evaluates persisted canonical events and records durable findings. The [rule catalog](docs/monitoring/detection-rules.md) defines the implemented coverage and future telemetry requirements.
+Status: completed on 2026-11-17 for the owner-approved bounded detection-engine scope. Genuine SSH and local TCP labs, equivalent user-space gateway policy attribution, negative controls, replay and isolated fault acceptance are recorded in the [Pi acceptance results](docs/development/milestone-3-pi-acceptance-20261117.md). This does not certify kernel firewall enforcement, LAN/IDS visibility, sustained capacity or production outage recovery. The [detection engine](docs/architecture/detection-engine.md) evaluates persisted canonical events and records durable findings. The [rule catalog](docs/monitoring/detection-rules.md) defines implemented coverage and future telemetry requirements.
 
 - [x] Add versioned rule/finding contracts and a validated registry.
 - [x] Add ASSET-001 v2 for associated discovery transitions and startup/ARP/ICMP/DHCP/mesh sightings with current inventory trust checks.
@@ -82,7 +82,7 @@ Status is in progress from 2026-11-09. The [detection engine](docs/architecture/
 - [x] Implement NET-001/002/003 and AUTH-001/002 against explicit canonical evidence, with scoped import and controlled synthetic tests on both backends.
 - [x] Implement read-only SSH journald, interface statistics, and nftables/iptables counter adapters with unavailable/unconfigured reporting, protected export inputs, and scoped 30-day retention preview.
 - [x] Add opt-in periodic host watching with bounded process-local retries, partial-write recovery, source isolation, and graceful shutdown.
-- [ ] Validate live telemetry adapters, gateway policy attribution, labelled lab scenarios, and false-positive tuning for activity rules.
+- [x] Validate live telemetry adapters, owner-approved equivalent gateway policy attribution, labelled lab scenarios, and false-positive controls for activity rules. Reviewed thresholds passed the bounded positive/negative cases without tuning; a population false-positive rate is not established.
 
 The [Milestone 3 acceptance matrix](docs/development/milestone-3-acceptance.md) separates implemented requirements from completion gates. Initialization also rejects newer unsupported database schemas before application schema changes.
 
@@ -93,7 +93,7 @@ The [Milestone 3 acceptance matrix](docs/development/milestone-3-acceptance.md) 
 | NET-001 | Network scan | Connection or scan telemetry |
 | NET-002 | Network sweep | Many destinations within a time window |
 | AUTH-001 | Repeated authentication failures | Authentication logs from one source |
-| AUTH-002 | Distributed authentication failures | Failures across accounts/services |
+| AUTH-002 | Distributed authentication failures | Distinct sources for the same target, service, and account |
 | NET-003 | Restricted network access | Gateway/firewall or equivalent traffic telemetry |
 
 ARP/ICMP discovery alone cannot establish scan, authentication, or traffic-based detections. Preserve event links and asset associations in alerts.

@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -200,9 +201,8 @@ class TestSQLiteInventoryAcceptance(InventoryAcceptanceContract, unittest.TestCa
             with self.assertRaises(StorageInitializationError):
                 self.storage.initialize()
         import sqlite3
-        with sqlite3.connect(self.storage.database_path) as connection:
+        with closing(sqlite3.connect(self.storage.database_path)) as connection, connection:
             self.assertEqual(connection.execute("SELECT schema_version FROM storage_metadata").fetchone()[0], 5)
             self.assertIsNone(connection.execute("SELECT name FROM sqlite_master WHERE name = 'asset_address_assignments'").fetchone())
-        connection.close()
         self.storage.initialize()
         self.assertEqual(len(self.repository.addresses.list_assignments(asset.asset_id)), 1)

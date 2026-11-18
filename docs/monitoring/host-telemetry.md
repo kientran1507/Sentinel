@@ -1,6 +1,6 @@
 # Read-Only Host Telemetry
 
-The host adapters support the confirmed Raspberry Pi sources through explicit snapshots, canonical export/import, and opt-in periodic watching. The integrated ZTE monitor keeps its existing lifecycle. Collection is invoked by an operator or an externally managed service. Live Pi execution and service-account deployment remain acceptance work.
+The host adapters support the confirmed Raspberry Pi sources through explicit snapshots, canonical export/import, and opt-in periodic watching. The integrated ZTE monitor keeps its existing lifecycle. Collection is invoked by an operator or an externally managed service. Bounded Pi preview and isolated lab acceptance are recorded in the [Pi results](../development/milestone-3-pi-acceptance-20261117.md); production service-account deployment remains separate work. Disposable sshd stdout uses a separate honest adapter and is not presented as `ssh.service` journal evidence.
 
 ## Sources and Commands
 

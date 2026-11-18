@@ -5,7 +5,6 @@ import logging
 import platform
 import shutil
 import subprocess
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, List, Optional
 

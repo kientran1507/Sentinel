@@ -1,9 +1,4 @@
-"""Discovery service package (ICMP scanner skeleton).
-
-This package contains a minimal Discovery Service skeleton with an ICMP scanner
-implementation suitable for unit testing. Network operations are encapsulated so
-they can be mocked in tests.
-"""
+"""Device discovery, router collection, presence tracking and collector health."""
 __all__ = [
     "models",
     "scanner",

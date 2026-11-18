@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch, MagicMock
-from datetime import timezone
 
 from services.discovery.arp_scanner import ARPScanner
 from services.discovery.models import DiscoveredDevice
 
 
 class TestARPScanner(unittest.TestCase):
+    def setUp(self):
+        # Unit tests exercise our packet arguments, not Scapy internals or sockets.
+        ether = patch("services.discovery.arp_scanner.Ether")
+        arp = patch("services.discovery.arp_scanner.ARP")
+        self.ether = ether.start()
+        self.addCleanup(ether.stop)
+        self.arp = arp.start()
+        self.addCleanup(arp.stop)
+
     @patch("services.discovery.arp_scanner.srp")
     def test_successful_arp_discovery(self, mock_srp):
         # Simulate one ARP answer
@@ -31,6 +39,20 @@ class TestARPScanner(unittest.TestCase):
         self.assertEqual(d.discovery_source, "arp")
         self.assertIsNotNone(d.discovered_at)
         self.assertIsNotNone(d.discovered_at.tzinfo)
+        self.ether.assert_called_once_with(dst="ff:ff:ff:ff:ff:ff")
+        self.arp.assert_called_once_with(pdst="192.168.2.0/30")
+
+    @patch("services.discovery.arp_scanner.srp")
+    def test_oversized_request_batches_existing_targets_and_deduplicates(self, mock_srp):
+        targets = [f"192.0.2.{index}" for index in range(1, 66)]
+        received = MagicMock(psrc="192.0.2.1", hwsrc="00:11:22:33:44:55")
+        mock_srp.side_effect = [OSError(90, "Message too long"),
+                                ([(None, received)], []), ([(None, received)], [])]
+        devices = ARPScanner(targets).scan()
+        self.assertEqual([device.ip_address for device in devices], ["192.0.2.1"])
+        self.assertEqual([call.kwargs["pdst"] for call in self.arp.call_args_list],
+                         [",".join(targets), ",".join(targets[:64]), targets[64]])
+        self.assertEqual(mock_srp.call_count, 3)
 
     @patch("services.discovery.arp_scanner.srp")
     def test_multiple_devices(self, mock_srp):

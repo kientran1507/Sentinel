@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-from datetime import timezone
 from typing import Iterable, List, Optional
 
 from .models import DiscoveredDevice
@@ -10,16 +9,13 @@ from .models import DiscoveredDevice
 logger = logging.getLogger(__name__)
 
 
-# Attempt module-level import of scapy so unit tests can patch `srp` at the
-# module level without scapy being installed in the test environment.
+# Keep packet construction and sending at a mockable module boundary.
 try:
     from scapy.all import srp, Ether, ARP  # type: ignore
-    _scapy_available = True
 except Exception:
     srp = None
     Ether = None
     ARP = None
-    _scapy_available = False
 
 
 class ARPScanner:
@@ -46,7 +42,6 @@ class ARPScanner:
         self._srp = srp
         self._Ether = Ether
         self._ARP = ARP
-        self._scapy_available = _scapy_available
 
     def _expand_targets(self) -> List[str]:
         if self._ips is not None:
@@ -99,17 +94,8 @@ class ARPScanner:
             # long comma-separated list. Fall back to batched ARP probes.
             if getattr(e, "errno", None) == 90:
                 logger.warning("srp failed with Message too long; falling back to batched ARP probes")
-                # Build explicit host list and probe in chunks
-                if isinstance(targets, list):
-                    host_list = targets
-                else:
-                    try:
-                        net = ipaddress.ip_network(self._target_network, strict=False)
-                        host_list = [str(ip) for ip in net.hosts()]
-                    except Exception as ee:
-                        logger.exception("failed to expand network for batched probes: %s", ee)
-                        return devices
-
+                # _expand_targets already returns the explicit host list.
+                host_list = targets
                 seen = set()
                 chunk_size = 64
                 for i in range(0, len(host_list), chunk_size):

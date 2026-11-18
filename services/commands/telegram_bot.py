@@ -25,7 +25,6 @@ class TelegramCommandBot:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._offset = 0
-        self._stopped = threading.Event()
 
     def _api(self, method: str, payload: dict, *, request_timeout: float | None = None) -> dict:
         url = f"https://api.telegram.org/bot{self.token}/{method}"
@@ -68,7 +67,6 @@ class TelegramCommandBot:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._stopped.clear()
         self._thread = threading.Thread(target=self.run, name="sentinel-telegram-commands", daemon=True)
         self._thread.start()
 
@@ -79,7 +77,6 @@ class TelegramCommandBot:
             except Exception as exc:
                 logger.error("Telegram command polling failed: %s", type(exc).__name__)
                 self._stop.wait(min(5.0, self.timeout))
-            self._stopped.set()
 
     def stop(self) -> None:
         self._stop.set()

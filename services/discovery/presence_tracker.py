@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
 
 from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
 from services.discovery.device_registry import DeviceRegistry

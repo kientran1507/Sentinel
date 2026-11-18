@@ -1,6 +1,6 @@
 # Detection Engine
 
-Milestone 3 began on 2026-11-09. The first implementation provides a rule protocol/registry, two telemetry-supported rules, durable findings, evidence links, configurable counting windows, and an open-to-resolved finding lifecycle. The rule catalog records coverage and remaining telemetry dependencies. [Rule catalog](../monitoring/detection-rules.md)
+Milestone 3 completed bounded acceptance on 2026-11-17. The engine provides a rule protocol/registry, seven rules, durable findings, evidence links, configurable counting windows, and an audited open-to-resolved finding lifecycle. The rule catalog records coverage and telemetry dependencies. [Rule catalog](../monitoring/detection-rules.md)
 
 ## Runtime Boundary
 
@@ -10,8 +10,10 @@ flowchart LR
     E --> R[RuleRegistry]
     R --> A[ASSET-001]
     R --> O[OPS-001]
+    R --> T[NET-001/002/003 and AUTH-001/002]
     A --> F[Finding and evidence transaction]
     O --> F
+    T --> F
     F --> S[Open or resolved state]
 ```
 
@@ -85,4 +87,4 @@ Acknowledgement, reopening, automatic recovery-driven closure, and incident corr
 
 Shared detection repository/ingestion tests run against temporary SQLite and isolated PostgreSQL schemas. They cover unique concurrent writes, lifecycle resolution races, restart/replay, rollback, additive migrations, retained soft links, trust checks, counting windows, late events, scope/source separation, and the real monitor/event/alert path with mocked collection and delivery. Contract tests cover validation, identity, wire format, and bounded policy settings. [Detection tests](../../tests/test_detection.py)
 
-Milestone 3 remains in progress for live acceptance. All seven rule IDs, startup/standalone-discovery findings, and audited operator resolution are implemented. Traffic/authentication/denial rules have controlled synthetic evidence and an explicit import entry point. Live adapters, deployment policy attribution, labelled lab scenarios, and false-positive tuning remain acceptance gates. [Project plan](../../Sentinel_Project_Plan.md)
+All seven rule IDs, startup/standalone-discovery findings, and audited operator resolution are implemented. Bounded genuine SSH, local accepted TCP and owner-approved equivalent user-space gateway decisions passed labelled positive/negative controls and replay. The [Pi acceptance record](../development/milestone-3-pi-acceptance-20261117.md) closes that scope. Kernel firewall decision delivery, broader LAN/IDS collection, population false-positive measurement, sustained capacity and production deployment/recovery remain separate work. [Project plan](../../Sentinel_Project_Plan.md)

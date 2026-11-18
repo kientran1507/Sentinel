@@ -4,7 +4,7 @@ from contextlib import redirect_stderr
 from io import StringIO
 from unittest.mock import Mock, patch
 
-from scripts.sentinel import main, render_devices, run_runtime
+from scripts.sentinel import main, run_runtime
 from services.alerting.notifications import NotificationManager
 from services.discovery.device_registry import DeviceRegistry
 from services.discovery.models import ZTEDevice

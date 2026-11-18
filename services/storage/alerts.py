@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from services.alerting.engine import Alert, AlertType, Severity
-from services.discovery.models import DeviceEvent, DeviceEventType, ZTEDevice
+from services.discovery.models import DeviceEvent, ZTEDevice
 
 from .base import Storage
 from .devices import device_identity_key, normalize_mac

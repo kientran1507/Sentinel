@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 from services.alerting.engine import AlertType, Severity
 from services.commands.handler import CommandHandler
-from services.commands.models import CommandResponse
 from services.commands.renderers import render_discord, render_telegram
 from services.discovery.device_registry import DeviceRegistry
 from services.discovery.models import DeviceEvent, DeviceEventType

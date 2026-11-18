@@ -2,7 +2,9 @@
 
 ## Setup
 
-Use a current Python environment compatible with the code and dependencies. Although package metadata says Python >=3.8, the source uses modern annotations and has not established support for every version in that range.
+Use Python 3.10 or later, matching the package metadata and modern annotations.
+Pi acceptance used Python 3.11; support for every interpreter/dependency combination
+has not been established.
 
 From the repository root on Windows:
 
