@@ -90,6 +90,31 @@ DETECTION_ACKNOWLEDGEMENT_STATEMENTS = (
 )
 
 
+INCIDENT_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS incidents (
+        incident_id TEXT PRIMARY KEY, network_scope TEXT NOT NULL, case_key TEXT NOT NULL,
+        title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'resolved')), resolved_at TEXT,
+        UNIQUE (network_scope, case_key),
+        CHECK ((status='open' AND resolved_at IS NULL) OR (status='resolved' AND resolved_at IS NOT NULL))
+    )""",
+    """CREATE TABLE IF NOT EXISTS incident_events (
+        event_id TEXT PRIMARY KEY, incident_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL,
+        FOREIGN KEY (incident_id) REFERENCES incidents(incident_id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS incident_findings (
+        incident_id TEXT NOT NULL, finding_id TEXT NOT NULL, event_id TEXT NOT NULL UNIQUE,
+        PRIMARY KEY (incident_id, finding_id),
+        FOREIGN KEY (incident_id) REFERENCES incidents(incident_id) ON DELETE CASCADE,
+        FOREIGN KEY (event_id) REFERENCES incident_events(event_id) ON DELETE CASCADE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_scope_time ON incidents (network_scope, created_at, incident_id)",
+    "CREATE INDEX IF NOT EXISTS idx_incident_events_time ON incident_events (incident_id, timestamp, event_id)",
+    "CREATE INDEX IF NOT EXISTS idx_incident_findings_finding ON incident_findings (finding_id, incident_id)",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -156,6 +181,7 @@ MIGRATIONS = (
     Migration(4, "canonical detection findings", DETECTION_STATEMENTS),
     Migration(5, "audited finding resolution", DETECTION_AUDIT_STATEMENTS),
     Migration(6, "audited finding acknowledgement", DETECTION_ACKNOWLEDGEMENT_STATEMENTS),
+    Migration(7, "scoped incidents and operator timelines", INCIDENT_STATEMENTS),
 )
 
 

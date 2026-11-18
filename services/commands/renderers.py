@@ -5,6 +5,10 @@ from datetime import datetime
 
 from .models import CommandResponse
 
+INCIDENT_TITLES = {"incidents": "Sentinel Incidents", "incident": "Sentinel Incident",
+                   "create-incident": "Incident Creation", "link-finding": "Incident Finding Link",
+                   "incident-note": "Incident Note", "resolve-incident": "Incident Resolution"}
+
 
 def _status_icon(state: str) -> str:
     return {"ONLINE": "🟢", "OFFLINE": "🔴"}.get(state.upper(), "⚪")
@@ -43,6 +47,10 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
             "/finding — Inspect a detection finding\n"
             "/acknowledge-finding — Record a review with a reason\n"
             "/resolve-finding — Resolve with an audited reason\n\n"
+            "<b>Incidents</b>\n\n"
+            "/incidents — List cases\n/incident — Inspect a timeline\n"
+            "/create-incident — Create a case\n/link-finding — Link evidence\n"
+            "/incident-note — Add a note\n/resolve-incident — Close a case\n\n"
             "<b>General</b>\n\n/help — Show this help",
             "HTML",
         )
@@ -61,7 +69,7 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
                 lines.extend([f"{_status_icon(device['state'])} <b>{name}</b>", f"   State: <b>{state}</b>", f"   IP: <code>{ip}</code>", f"   MAC: <code>{mac}</code>", f"   Vendor: {vendor}", ""])
             lines.extend(["━━━━━━━━━━━━━━━━", f"Total: <b>{data['total']}</b>", f"🟢 Online: {data['online']}", f"🔴 Offline: {data['offline']}", f"⚪ Unknown: {data['unknown']}"])
         return "\n".join(lines), "HTML"
-    if command in {"findings", "finding", "resolve-finding", "acknowledge-finding"}:
+    if command in INCIDENT_TITLES or command in {"findings", "finding", "resolve-finding", "acknowledge-finding"}:
         return response.text, None
     if command == "status":
         return ("\n".join([
@@ -129,7 +137,12 @@ def render_discord(response: CommandResponse, discord_module=None):
         embed = discord.Embed(title="Sentinel Commands", color=0x2F80ED)
         embed.add_field(name="Monitoring", value="`/devices`  Show discovered devices\n`/status`   Show Sentinel status\n`/alerts`   Show recent alerts\n`/events`   Show historical events\n`/alert-history`   Show historical alerts\n`/findings`   Show detection findings\n`/finding`   Inspect a detection finding\n`/acknowledge_finding`   Record a review with a reason\n`/resolve_finding`   Resolve with an audited reason", inline=False)
         embed.add_field(name="General", value="`/help`     Show this help", inline=False)
+        embed.add_field(name="Incidents", value="`/incidents` List cases\n`/incident` Inspect timeline\n"
+                        "`/create_incident` Create case\n`/link_finding` Link evidence\n"
+                        "`/incident_note` Add note\n`/resolve_incident` Close case", inline=False)
         return embed
+    if command in INCIDENT_TITLES:
+        return discord.Embed(title=INCIDENT_TITLES[command], description=response.text.split("\n\n", 1)[-1], color=0x2F80ED)
     if command in {"findings", "finding", "resolve-finding", "acknowledge-finding"}:
         title = {"finding": "Sentinel Finding", "findings": "Sentinel Findings",
                  "resolve-finding": "Sentinel Finding Resolution",

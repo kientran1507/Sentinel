@@ -75,6 +75,7 @@ class TestRuntimePersistence(unittest.TestCase):
                             self.assertEqual(runtime.monitor.on_health.__name__, "persist_collector_health")
                             self.assertIs(runtime.monitor.on_health.__self__.storage, runtime.storage)
                             self.assertIs(runtime.command_service.handler.detection_repository.storage, runtime.storage)
+                            self.assertIs(runtime.command_service.handler.incident_repository.storage, runtime.storage)
                             self.assertEqual(runtime.monitor.on_health.__self__.detection_engine.registry.rules,
                                              default_rules(collector_failure_rule=policy))
                             self.assertTrue(Path(path).is_file())

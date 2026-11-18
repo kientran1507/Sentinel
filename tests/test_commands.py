@@ -122,7 +122,7 @@ class TestCommands(unittest.TestCase):
         client = bot._build_client(FakeDiscord)
         self.assertFalse(client.intents.message_content)
         tree = FakeTree.last
-        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings", "finding", "acknowledge_finding", "resolve_finding"})
+        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings", "finding", "acknowledge_finding", "resolve_finding", "incidents", "incident", "create_incident", "link_finding", "incident_note", "resolve_incident"})
         self.assertEqual(set(client.events), {"on_ready", "setup_hook"})
         asyncio.run(client.events["setup_hook"]())
         self.assertTrue(tree.synced_global)
@@ -140,6 +140,7 @@ class TestCommands(unittest.TestCase):
         interaction = type("Interaction", (), {"user": User(), "response": Response()})()
         asyncio.run(tree.commands["help"](interaction))
         self.assertEqual(interaction.response.text.kwargs["title"], "Sentinel Commands")
+        self.assertTrue(all(len(field["value"]) <= 1024 for field in interaction.response.text.fields))
         with patch.object(self.handler, "handle", wraps=self.handler.handle) as dispatch:
             asyncio.run(tree.commands["findings"](interaction, limit=2, status="resolved"))
             dispatch.assert_called_once_with("/findings --limit 2 --status resolved", platform="discord", user_id="20")
@@ -161,6 +162,28 @@ class TestCommands(unittest.TestCase):
             command = CommandParser().parse(dispatch.call_args.args[0])
             self.assertEqual(command.name, "resolve-finding")
             self.assertEqual(command.args, [finding_id, "Owner's review"])
+
+        incident_id = "incident:v1:" + "b" * 64
+        native_cases = (
+            ("create_incident", {"case_key": "review", "title": "Owner's SSH review"},
+             "create-incident", ["review", "Owner's SSH review"]),
+            ("link_finding", {"incident_id": incident_id, "finding_id": finding_id, "reason": "Owner's evidence"},
+             "link-finding", [incident_id, finding_id, "Owner's evidence"]),
+            ("incident_note", {"incident_id": incident_id, "note_key": "note-1", "note": "Owner's note"},
+             "incident-note", [incident_id, "note-1", "Owner's note"]),
+            ("resolve_incident", {"incident_id": incident_id, "reason": "Owner's conclusion"},
+             "resolve-incident", [incident_id, "Owner's conclusion"]),
+            ("incidents", {"limit": 2, "status": "all", "before": "page token"},
+             "incidents", ["--limit", "2", "--status", "all", "--before", "page token"]),
+            ("incident", {"incident_id": incident_id, "before": "page token"},
+             "incident", [incident_id, "--before", "page token"]),
+        )
+        for native, arguments, name, expected in native_cases:
+            with self.subTest(native=native), patch.object(self.handler, "handle", wraps=self.handler.handle) as dispatch:
+                asyncio.run(tree.commands[native](interaction, **arguments))
+                parsed = CommandParser().parse(dispatch.call_args.args[0])
+                self.assertEqual((parsed.name, parsed.args), (name, expected))
+                self.assertEqual(dispatch.call_args.kwargs, {"platform": "discord", "user_id": "20"})
 
         with patch.dict("os.environ", {"DISCORD_GUILD_ID": "123456789"}):
             guild_bot = DiscordCommandBot("token", self.handler)

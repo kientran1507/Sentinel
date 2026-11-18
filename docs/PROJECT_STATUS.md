@@ -12,7 +12,14 @@ Milestone 3's foundation adds PostgreSQL migration 4 / SQLite schema 8 for findi
 
 ## Implemented
 
-Milestone 4 started on 2026-11-18 with [finding acknowledgement](development/milestone-4-acknowledgement.md): independent first-review audits, scoped authorized commands and additive PostgreSQL 6 / SQLite 10 development schemas. Four model tests, nine backend-focused SQLite checks and the owner accepted-image regression pass (455 passed, 189 PostgreSQL skips, zero errors/failures). New PostgreSQL integration remains pending in the first-slice record. Production remains unchanged; incident and notification-delivery work is not complete.
+Milestone 4 started on 2026-11-18 with [finding acknowledgement](development/milestone-4-acknowledgement.md): independent first-review audits, scoped authorized commands and additive PostgreSQL 6 / SQLite 10 development schemas. Four model tests, nine backend-focused SQLite checks and the owner accepted-image regression pass (455 passed, 189 PostgreSQL skips, zero errors/failures). New PostgreSQL integration remains pending in the first-slice record. Production remains unchanged; Milestone 4 is not complete.
+
+The [incident slice](development/milestone-4-incidents.md) adds operator-created
+cases, finding links, notes, immutable audit timelines and scoped resolution.
+Owner accepted-image unit/SQLite regression passed: 482 passed, 211 PostgreSQL
+skips, zero errors/failures. PostgreSQL migration 7 / SQLite schema 11 remain
+development-only. Notification delivery/retries and automatic correlation policy
+are still pending.
 
 - Single Python runtime: ZTE H3601P collection, presence tracking, typed device events, alert rules, and Discord/Telegram notifications and commands.
 - Separate ARP/ICMP discovery helper with optional hostname enrichment and persistence.
@@ -71,7 +78,7 @@ See [asset identity](architecture/asset-identity.md) and [storage](architecture/
 
 The [Milestone 3 acceptance matrix](development/milestone-3-acceptance.md) maps implemented requirements to regression coverage and completed bounded gates. Collector-failure thresholds and windows are configurable through both startup commands. Storage initialization reports newer unsupported schemas and releases the attempted connection while preserving stored data.
 
-All seven planned rule IDs have implementation and controlled acceptance. Confirmed SSH journald and cumulative host-counter sources have read-only one-shot adapters and protected-file import paths. Bounded Pi acceptance used genuine disposable authentication, local accepted TCP and explicit equivalent gateway decisions; negative controls passed without threshold changes. No population false-positive rate or sustained throughput is established. Individual kernel firewall logging, capture and conntrack remain unconfigured for acceptance. Explicit canonical imports provide a supported evidence entry point while deployment and broader gateway/collector work follow their roadmap scope. First-review acknowledgement is now Milestone 4 development; reopening, automatic closure and incident workflows remain future lifecycle work.
+All seven planned rule IDs have implementation and controlled acceptance. Confirmed SSH journald and cumulative host-counter sources have read-only one-shot adapters and protected-file import paths. Bounded Pi acceptance used genuine disposable authentication, local accepted TCP and explicit equivalent gateway decisions; negative controls passed without threshold changes. No population false-positive rate or sustained throughput is established. Individual kernel firewall logging, capture and conntrack remain unconfigured for acceptance. Explicit canonical imports provide a supported evidence entry point while deployment and broader gateway/collector work follow their roadmap scope. First-review acknowledgement is now Milestone 4 development; explicit investigation cases now have audited commands; reopening and automatic closure remain future lifecycle work.
 
 Periodic source collection now has an explicit preview/apply command. Dedicated-account production deployment remains owner-managed; bounded Pi labs did not replace or deploy the running runtime. The in-memory retry buffer is bounded, reports overflow, and loses pending contents at process exit. Long collection gaps or saturated journal tails still need deployment-specific coverage validation.
 

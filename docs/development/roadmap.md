@@ -44,8 +44,11 @@ additive development migrations. Existing finding evidence and resolution remain
 intact. Owner accepted-image unit/SQLite regression passed (455 tests); new disposable
 PostgreSQL acceptance remains pending. Nothing has been deployed to production.
 
-Incident identity/linking and timelines, notification retries/delivery history,
-storm prevention and severity policies remain subsequent Milestone 4 work.
+The next slice adds [explicit investigation cases](milestone-4-incidents.md):
+scoped identity, operator-selected finding links, notes, resolution and immutable
+timelines. Owner unit/SQLite regression passed (482 tests); new PostgreSQL
+integration remains pending. Notification retries/delivery history, automatic
+correlation policy, storm prevention and severity policies remain subsequent work.
 
 Before production reliance, separately validate backup/restore, upgrades with
 stopped writers, platform delivery, real network-partition timeouts, retention

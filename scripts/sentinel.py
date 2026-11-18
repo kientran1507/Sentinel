@@ -469,6 +469,7 @@ def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None
         handler = CommandHandler(
             registry, monitor=monitor, alert_history=alert_history, history_service=history_service,
             asset_repository=persistence.assets, detection_repository=persistence.findings,
+            incident_repository=persistence.incidents,
             detection_scope=persistence.assets.network_scope,
         )
         command_service = CommandService(handler=handler)

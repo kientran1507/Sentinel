@@ -90,6 +90,35 @@ class DiscordCommandBot:
         async def resolve_finding_command(interaction, finding_id: str, reason: str):
             await respond(interaction, "resolve-finding", [quote(finding_id), quote(reason)])
 
+        @tree.command(name="create_incident", description="Create an investigation case")
+        async def create_incident_command(interaction, case_key: str, title: str):
+            await respond(interaction, "create-incident", [quote(case_key), quote(title)])
+
+        @tree.command(name="link_finding", description="Link a finding to an investigation")
+        async def link_finding_command(interaction, incident_id: str, finding_id: str, reason: str):
+            await respond(interaction, "link-finding", [quote(incident_id), quote(finding_id), quote(reason)])
+
+        @tree.command(name="incident_note", description="Add an audited investigation note")
+        async def incident_note_command(interaction, incident_id: str, note_key: str, note: str):
+            await respond(interaction, "incident-note", [quote(incident_id), quote(note_key), quote(note)])
+
+        @tree.command(name="resolve_incident", description="Close an investigation case")
+        async def resolve_incident_command(interaction, incident_id: str, reason: str):
+            await respond(interaction, "resolve-incident", [quote(incident_id), quote(reason)])
+
+        @tree.command(name="incidents", description="List investigation cases")
+        async def incidents_command(interaction, limit: int | None = None, status: str | None = None, before: str | None = None):
+            args = []
+            for flag, value in (("--limit", limit), ("--status", status), ("--before", before)):
+                if value is not None:
+                    args.extend([flag, quote(str(value))])
+            await respond(interaction, "incidents", args)
+
+        @tree.command(name="incident", description="Inspect an investigation timeline")
+        async def incident_command(interaction, incident_id: str, before: str | None = None):
+            args = [quote(incident_id)] + (["--before", quote(before)] if before is not None else [])
+            await respond(interaction, "incident", args)
+
         @tree.command(name="events", description="Show historical device events")
         async def events_command(interaction, limit: int | None = None, device: str | None = None, type: str | None = None):
             args = []

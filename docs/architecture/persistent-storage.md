@@ -20,7 +20,7 @@ Each storage instance owns one connection and a lock that serializes transaction
 
 PostgreSQL inventory transactions additionally lock the asset and address tables before identity lookup to serialize independent writers. Ordinary reads remain available. An existing nonzero lock timeout is honored; otherwise a transaction-local five-second timeout bounds contention waits. A timeout rolls back the operation without automatic retry. This favors correctness over write throughput for the current low-volume monitor; see [concurrency details](asset-identity.md#concurrent-postgresql-writers).
 
-SQLite development code initializes tables and additive column checks in a transaction and records schema version 10. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL development code applies migration 6 through the existing versioned migration path. These Milestone 4 changes have not been applied to production; backend version numbers track separate histories. [Migrations](../../services/storage/migrations.py)
+SQLite development code initializes tables and additive column checks in a transaction and records schema version 11. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL development code applies migration 7 through the existing versioned migration path. These Milestone 4 changes have not been applied to production; backend version numbers track separate histories. [Migrations](../../services/storage/migrations.py)
 
 The interval upgrade seeds one assignment row from each existing address summary without changing asset IDs or deleting evidence. Initialization applies upgrades atomically; failures preserve the previous schema/version. Take a verified backup before deployment and stop old writers while upgrading; mixed-version writers are not supported. This development task validated upgrades only in disposable databases and did not migrate local/runtime data. Historical intervals already collapsed by older code cannot be reconstructed. Legacy replay keys remain stored; the first version-2 replay may add one evidence row.
 
@@ -61,6 +61,12 @@ record without modifying finding payload, evidence or resolution. Existing rows
 receive no invented review history. Only disposable development databases are
 used for validation. [Acknowledgement and rollout](../development/milestone-4-acknowledgement.md)
 
+PostgreSQL migration 7 / SQLite schema 11 add scoped investigation cases, immutable
+operator timelines and soft finding references. Each action commits with its audit;
+closing a case preserves the original findings and their separate lifecycle.
+Exact scope checks cover both case and linked finding reads.
+[Incident contract and validation](../development/milestone-4-incidents.md)
+
 The opt-in discovery sink additionally writes canonical sightings and actual hostname-resolution evidence after attempting inventory persistence. It uses deterministic observation IDs, not a new-asset classification, and never invokes the alert bus. Source batches and each resulting canonical record have independent best-effort writes. See [discovery evidence](security-events.md#discovery-evidence).
 
 Write failures after startup are logged and isolated from monitoring and notifications. Writes are synchronous and may delay a poll; no persistent queue, automatic retry, or delivery receipt ledger exists.
@@ -71,7 +77,7 @@ Remote `/devices` uses durable assets when nonempty, with a live MAC overlay. A 
 
 ## Limits and Operations
 
-Initialization rejects a stored schema version newer than the code's supported version. Current development targets PostgreSQL version 6 and SQLite version 10; the accepted running image is unchanged. The check releases the attempted connection and preserves the database version and contents. Deploy matching or newer Sentinel code before reconnecting to an upgraded database. Repeated initialization attempts continue to fail until the versions are compatible.
+Initialization rejects a stored schema version newer than the code's supported version. Current development targets PostgreSQL version 7 and SQLite version 11; the accepted running image is unchanged. The check releases the attempted connection and preserves the database version and contents. Deploy matching or newer Sentinel code before reconnecting to an upgraded database. Repeated initialization attempts continue to fail until the versions are compatible.
 
 See [identity and observations](asset-identity.md) for global MAC policy, preserved intervals, freshness, and replay rules. Shared acceptance tests run against SQLite and PostgreSQL; PostgreSQL has forced independent-writer overlap coverage and SQLite has independent-connection replay coverage.
 

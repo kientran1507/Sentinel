@@ -8,11 +8,12 @@ from typing import Iterator, Optional, Union
 
 from .base import Storage, StorageError, StorageInitializationError, StorageNotInitializedError
 from .config import get_database_path
-from .migrations import ADDRESS_HISTORY_STATEMENTS, SECURITY_EVENT_STATEMENTS, DETECTION_STATEMENTS, DETECTION_AUDIT_STATEMENTS, DETECTION_ACKNOWLEDGEMENT_STATEMENTS
+from .migrations import (ADDRESS_HISTORY_STATEMENTS, SECURITY_EVENT_STATEMENTS, DETECTION_STATEMENTS,
+                         DETECTION_AUDIT_STATEMENTS, DETECTION_ACKNOWLEDGEMENT_STATEMENTS, INCIDENT_STATEMENTS)
 
 
 PathLike = Union[str, Path]
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 class SQLiteStorage(Storage):
@@ -215,6 +216,9 @@ class SQLiteStorage(Storage):
                         connection.execute(statement)
                 if version is None or version[0] < 10:
                     for statement in DETECTION_ACKNOWLEDGEMENT_STATEMENTS:
+                        connection.execute(statement)
+                if version is None or version[0] < 11:
+                    for statement in INCIDENT_STATEMENTS:
                         connection.execute(statement)
                 connection.execute(
                     "INSERT OR IGNORE INTO storage_metadata (id, schema_version) VALUES (1, ?)",

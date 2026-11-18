@@ -21,7 +21,7 @@ flowchart LR
 
 Canonical commit precedes finding persistence. Each rule and finding write has an independent failure boundary, with safe error classification in logs. Canonical/legacy evidence can survive a failed detection attempt. An explicit replay can retry evaluation. Evaluation uses current inventory trust and currently retained canonical history, so replay results reflect those inputs at evaluation time. Ingestion and detection remain synchronous and can delay a poll during slow storage operations.
 
-The existing device event bus supplies legacy alerts and notifications. Detection findings are available through the repository, a scoped `/findings` list, and `/finding` detail inspection. Allowlisted operators can resolve findings with an audited reason. Milestone 4 development adds independent first-review acknowledgement; API integration and incident workflows remain later work. The current callbacks and history interfaces are described in the event contract. [Canonical events](security-events.md)
+The existing device event bus supplies legacy alerts and notifications. Detection findings are available through the repository, a scoped `/findings` list, and `/finding` detail inspection. Allowlisted operators can resolve findings with an audited reason. Milestone 4 development adds independent first-review acknowledgement and explicit scoped investigation cases; API integration remains later work. The current callbacks and history interfaces are described in the event contract. [Canonical events](security-events.md)
 
 ## Rule Contract and Configuration
 
@@ -97,3 +97,10 @@ collector. Legacy alert delivery continues under its current rules.
 Shared detection repository/ingestion tests run against temporary SQLite and isolated PostgreSQL schemas. They cover unique concurrent writes, lifecycle resolution races, restart/replay, rollback, additive migrations, retained soft links, trust checks, counting windows, late events, scope/source separation, and the real monitor/event/alert path with mocked collection and delivery. Contract tests cover validation, identity, wire format, and bounded policy settings. [Detection tests](../../tests/test_detection.py)
 
 All seven rule IDs, startup/standalone-discovery findings, and audited operator resolution are implemented. Bounded genuine SSH, local accepted TCP and owner-approved equivalent user-space gateway decisions passed labelled positive/negative controls and replay. The [Pi acceptance record](../development/milestone-3-pi-acceptance-20261117.md) closes that scope. Kernel firewall decision delivery, broader LAN/IDS collection, population false-positive measurement, sustained capacity and production deployment/recovery remain separate work. [Project plan](../../Sentinel_Project_Plan.md)
+
+## Investigation cases
+
+Milestone 4 [incident commands](../development/milestone-4-incidents.md) let an
+authorized operator explicitly link findings, add notes and close a case. Case
+closure does not change finding evidence, acknowledgement or resolution. These
+actions do not send notifications or automatically correlate new detections.

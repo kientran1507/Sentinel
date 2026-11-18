@@ -17,6 +17,7 @@ from .device_events import DeviceEventRepository
 from .devices import DeviceRepository, normalize_mac
 from .security_events import SecurityEventRepository
 from .detections import DetectionRepository
+from .incidents import IncidentRepository
 from .base import Storage
 from .config import get_network_scope
 
@@ -38,6 +39,7 @@ class RuntimePersistence:
         self.alerts = AlertRepository(storage)
         self.security_events = SecurityEventRepository(storage)
         self.findings = DetectionRepository(storage)
+        self.incidents = IncidentRepository(storage)
         self.detection_engine = DetectionEngine(
             RuleRegistry(default_rules() if detection_rules is None else detection_rules),
             assets=self.assets, events=self.security_events, findings=self.findings,

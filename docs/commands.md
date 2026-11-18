@@ -110,3 +110,26 @@ apply. `/finding` displays acknowledgement and resolution independently; long
 review reasons are shortened to 160 characters with a marker while full reasons
 remain stored. This needs PostgreSQL migration 6 / SQLite schema 10 and a reviewed
 rollout before use with production. [Contract and test status](development/milestone-4-acknowledgement.md)
+
+## Investigation cases (Milestone 4 development)
+
+| Shared/Telegram command | Discord spelling | Purpose |
+| --- | --- | --- |
+| `/create-incident <case-key> <title>` | `/create_incident` | Create a scoped case with a stable key |
+| `/link-finding <incident-id> <finding-id> <reason>` | `/link_finding` | Add a same-scope finding reference |
+| `/incident-note <incident-id> <note-key> <note>` | `/incident_note` | Record an immutable operator note |
+| `/resolve-incident <incident-id> <reason>` | `/resolve_incident` | Close a case without changing findings |
+| `/incidents [--limit 1-5] [--status open|resolved|all] [--before cursor]` | `/incidents` | Page cases; defaults to five open cases |
+| `/incident <incident-id> [--before cursor]` | `/incident` | Inspect a case and page older audit events |
+
+Actor and scope are supplied by the authenticated runtime, with the same allowlists
+and rate limits as other commands. Case/note keys provide retry identities; reuse
+the same key and text to avoid duplicate actions. Titles are limited to 120
+printable characters; reasons/notes to 500. Timelines display three events with
+reason excerpts, while retaining full text in storage. Missing linked findings
+are labelled unavailable. New actions on closed cases fail; existing action
+replays retain the first audit. No notification or automatic correlation runs.
+
+These commands require the development PostgreSQL 7 / SQLite 11 schema and a
+separately reviewed rollout. They are not available in the running accepted
+image. See the [incident contract and test results](development/milestone-4-incidents.md).

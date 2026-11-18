@@ -102,15 +102,16 @@ ARP/ICMP discovery alone cannot establish scan, authentication, or traffic-based
 
 Add acknowledgement, resolution, related-alert correlation, incident timelines, and investigation context. Preserve underlying alerts and events. Add notification retries, delivery history, storm prevention, and severity policies. Extract the notifier only after its responsibilities and contract are clear.
 
-Status: started on 2026-11-18. The [first acknowledgement slice](docs/development/milestone-4-acknowledgement.md) adds a scoped first-review audit and authorized commands while preserving the existing resolution lifecycle. No production deployment or migration has run.
+Status: in progress since 2026-11-18. The [acknowledgement slice](docs/development/milestone-4-acknowledgement.md) adds first-review audits; the [incident slice](docs/development/milestone-4-incidents.md) adds explicit scoped cases, finding links and investigation timelines. No production deployment or migration has run.
 
 - [x] Define acknowledgement separately from resolution and immutable detection evidence.
 - [x] Implement scoped first-review persistence, actor/reason/time validation, and additive development migrations.
 - [x] Expose acknowledgement and bounded audit details through the existing authorized commands.
 - [x] Pass dependency-complete unit/SQLite regression (455 passed; 189 PostgreSQL cases deliberately skipped).
 - [ ] Run the new shared contracts and migrations against a dedicated disposable PostgreSQL database.
-- [ ] Define incident identity, finding links and investigation timelines.
-- [ ] Add incident actions and audit history with scope and authorization checks.
+- [x] Define incident identity, explicit finding links and investigation timelines.
+- [x] Add incident actions and audit history with scope and authorization checks; [482 unit/SQLite tests passed](docs/development/milestone-4-incidents.md).
+- [ ] Decide automatic related-alert/finding correlation policy separately from explicit links.
 - [ ] Add delivery history, bounded notification retries, storm prevention and severity policies.
 - [ ] Validate rollout, recovery and compatibility before any production migration.
 
