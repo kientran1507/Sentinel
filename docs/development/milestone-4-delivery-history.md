@@ -128,3 +128,7 @@ duplicate-delivery tradeoff. Do not turn historical `started` rows into a queue.
 Then add bounded retries, storm prevention and severity policy, with offline
 failure/restart tests before a separately reviewed rollout. Milestone 4 remains
 in progress; the running deployment stays unchanged.
+
+Subsequent development implements the [explicit outbox contract](milestone-4-outbox.md)
+and fixture-tested bounded dispatch. It remains disconnected from runtime sends;
+the destination, adapter, admission and production integration decisions still apply.

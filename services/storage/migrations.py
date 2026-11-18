@@ -131,6 +131,29 @@ DELIVERY_STATEMENTS = (
 )
 
 
+OUTBOX_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS notification_outbox (
+        job_id TEXT PRIMARY KEY, network_scope TEXT NOT NULL, destination TEXT NOT NULL,
+        provider TEXT NOT NULL, alert_id TEXT NOT NULL, snapshot TEXT NOT NULL, policy TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'in_flight', 'retry_wait', 'sent', 'failed', 'uncertain')),
+        attempt_count INTEGER NOT NULL CHECK (attempt_count BETWEEN 0 AND 3),
+        next_attempt_at TEXT, active_attempt_id TEXT, lease_expires_at TEXT,
+        UNIQUE (network_scope, destination, alert_id),
+        FOREIGN KEY (active_attempt_id) REFERENCES notification_deliveries(attempt_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS notification_outbox_attempts (
+        job_id TEXT NOT NULL, attempt_no INTEGER NOT NULL CHECK (attempt_no BETWEEN 1 AND 3),
+        attempt_id TEXT PRIMARY KEY, outcome TEXT CHECK (outcome IN ('sent', 'retry', 'rejected', 'uncertain')),
+        UNIQUE (job_id, attempt_no),
+        FOREIGN KEY (job_id) REFERENCES notification_outbox(job_id) ON DELETE CASCADE,
+        FOREIGN KEY (attempt_id) REFERENCES notification_deliveries(attempt_id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_outbox_due ON notification_outbox (network_scope, status, next_attempt_at, job_id)",
+    "CREATE INDEX IF NOT EXISTS idx_outbox_expiry ON notification_outbox (network_scope, status, lease_expires_at, job_id)",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -199,6 +222,7 @@ MIGRATIONS = (
     Migration(6, "audited finding acknowledgement", DETECTION_ACKNOWLEDGEMENT_STATEMENTS),
     Migration(7, "scoped incidents and operator timelines", INCIDENT_STATEMENTS),
     Migration(8, "notification send-attempt history", DELIVERY_STATEMENTS),
+    Migration(9, "explicit bounded notification dispatch", OUTBOX_STATEMENTS),
 )
 
 

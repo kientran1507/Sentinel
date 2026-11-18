@@ -28,6 +28,13 @@ existing sending behavior. PostgreSQL 8 / SQLite 12 are development-only. Owner
 accepted-image regression passed: 505 passed, 230 PostgreSQL skips, zero errors/
 failures. Automatic retries remain disabled; new PostgreSQL validation is pending.
 
+The [explicit outbox slice](development/milestone-4-outbox.md) adds frozen
+message snapshots, scoped logical destinations, atomic claims/shared history
+and at most three dispatch attempts. Generic transport errors and expired claims
+stop as uncertain; no runtime worker, scheduler or live binding is activated.
+Owner regression passed: 530 passed, 250 PostgreSQL skips, zero errors/failures.
+PostgreSQL 9 / SQLite 13 remain development-only; production is unchanged.
+
 - Single Python runtime: ZTE H3601P collection, presence tracking, typed device events, alert rules, and Discord/Telegram notifications and commands.
 - Separate ARP/ICMP discovery helper with optional hostname enrichment and persistence.
 - SQL repositories for legacy device records, assets, address summaries, separate assignment intervals, observations, device events, and alerts.

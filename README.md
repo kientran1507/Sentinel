@@ -16,6 +16,10 @@ additive schema changes are not deployed to the accepted running image.
 [incident workflow](docs/development/milestone-4-incidents.md),
 [notification history and validation](docs/development/milestone-4-delivery-history.md)
 
+An [explicit durable outbox](docs/development/milestone-4-outbox.md) now supports
+offline-tested controlled dispatch. It is not wired into runtime sending or a
+background scheduler; production continues to use the accepted image unchanged.
+
 Use Python 3.10 or later, as required by the package metadata. Pi acceptance used Python 3.11; every newer interpreter/dependency combination has not been certified.
 
 ```powershell

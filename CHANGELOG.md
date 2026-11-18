@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added an explicit durable notification outbox and bounded dispatcher with immutable message snapshots, scoped destination labels, atomic claims/history, three-attempt budgets and conservative uncertain-outcome handling; no runtime scheduler or live binding is activated. PostgreSQL 9 / SQLite 13 remain development-only.
 - Added scoped notification send-attempt history, explicit uncertain outcomes, sanitized audit failure isolation and read-only paginated history commands; PostgreSQL 8 / SQLite 12 schemas are development-only, with automatic retries still disabled.
 - Added scoped investigation cases, immutable timelines, finding references, notes and resolution through authorized Discord/Telegram commands; case closure preserves original findings. PostgreSQL 7 / SQLite 11 schemas are development-only.
 - Started Milestone 4 with scoped first-review acknowledgement, authorized Telegram/Discord commands, bounded audit display and additive development-only SQLite/PostgreSQL migrations; production is unchanged.

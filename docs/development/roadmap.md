@@ -49,13 +49,17 @@ scoped identity, operator-selected finding links, notes, resolution and immutabl
 timelines. Owner unit/SQLite regression passed (482 tests); new PostgreSQL
 integration remains pending. The [delivery-history slice](milestone-4-delivery-history.md)
 records provider calls and unknown completion without starting retries. Owner
-unit/SQLite regression passed (505 tests; 230 PostgreSQL skips). Durable dispatch/retries, automatic
-correlation policy, storm prevention and severity policies remain subsequent work.
+unit/SQLite regression passed (505 tests; 230 PostgreSQL skips). An
+[explicit outbox](milestone-4-outbox.md) now provides durable claims and bounded
+dispatch outside the runtime; owner unit/SQLite regression passed (530 tests;
+250 PostgreSQL skips). Live destination bindings and retry classification,
+automatic correlation policy, admission/storm prevention
+and severity policies remain subsequent work.
 
 Before production reliance, separately validate backup/restore, upgrades with
 stopped writers, platform delivery, real network-partition timeouts, retention
-and deployment hardening. Durable retry queues and cross-backend import require
-explicit scope; neither is implicit fallback behavior.
+and deployment hardening. Activating durable retry dispatch and cross-backend
+import requires explicit scope; neither is implicit fallback behavior.
 
 ## Later Capabilities
 

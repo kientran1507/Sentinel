@@ -25,18 +25,23 @@ class DeliveryRepository:
     def start(self, *, attempt_id, network_scope, alert_id, provider, started_at):
         value = DeliveryAttempt(attempt_id, network_scope, alert_id, provider, started_at)
         with self.storage.transaction() as connection:
-            connection.execute("INSERT INTO notification_deliveries "
-                               "(attempt_id, network_scope, alert_id, provider, started_at, status) "
-                               "VALUES (?, ?, ?, ?, ?, 'started') ON CONFLICT(attempt_id) DO NOTHING",
-                               (value.attempt_id, value.network_scope, value.alert_id, value.provider,
-                                value.started_at.isoformat(timespec="microseconds")))
-            row = connection.execute("SELECT * FROM notification_deliveries WHERE attempt_id=?", (attempt_id,)).fetchone()
-            if row is None:
-                raise StorageError("saved delivery attempt is unavailable")
-            saved = self._from_row(row)
-            if (saved.network_scope, saved.alert_id, saved.provider) != (network_scope, alert_id, provider):
-                raise DeliveryConflictError("delivery identity already belongs to different work")
-            return saved
+            return self._start(connection, value)
+
+    @staticmethod
+    def _start(connection, value):
+        """Share one transaction with an explicit outbox claim."""
+        connection.execute("INSERT INTO notification_deliveries "
+                           "(attempt_id, network_scope, alert_id, provider, started_at, status) "
+                           "VALUES (?, ?, ?, ?, ?, 'started') ON CONFLICT(attempt_id) DO NOTHING",
+                           (value.attempt_id, value.network_scope, value.alert_id, value.provider,
+                            value.started_at.isoformat(timespec="microseconds")))
+        row = connection.execute("SELECT * FROM notification_deliveries WHERE attempt_id=?", (value.attempt_id,)).fetchone()
+        if row is None:
+            raise StorageError("saved delivery attempt is unavailable")
+        saved = DeliveryRepository._from_row(row)
+        if (saved.network_scope, saved.alert_id, saved.provider) != (value.network_scope, value.alert_id, value.provider):
+            raise DeliveryConflictError("delivery identity already belongs to different work")
+        return saved
 
     def finish(self, attempt_id, *, network_scope, succeeded, finished_at):
         attempt_identity(attempt_id)
@@ -44,26 +49,31 @@ class DeliveryRepository:
         if type(succeeded) is not bool:
             raise ValueError("succeeded must be a boolean")
         finished_at = aware_utc(finished_at, "finished_at")
+        with self.storage.transaction() as connection:
+            return self._finish(connection, attempt_id, network_scope, succeeded, finished_at)
+
+    @staticmethod
+    def _finish(connection, attempt_id, network_scope, succeeded, finished_at):
+        """Share one transaction with an explicit outbox outcome."""
         status = DeliveryStatus.SUCCEEDED if succeeded else DeliveryStatus.FAILED
         error = None if succeeded else "provider-error"
-        with self.storage.transaction() as connection:
-            connection.execute("UPDATE notification_deliveries SET status=status WHERE attempt_id=? AND network_scope=?",
-                               (attempt_id, network_scope))
-            row = connection.execute("SELECT * FROM notification_deliveries WHERE attempt_id=? AND network_scope=?",
-                                     (attempt_id, network_scope)).fetchone()
-            if row is None:
-                return None
-            saved = self._from_row(row)
-            if saved.status != DeliveryStatus.STARTED:
-                if saved.status != status:
-                    raise DeliveryConflictError("delivery outcome already recorded")
-                return saved
-            value = DeliveryAttempt(saved.attempt_id, saved.network_scope, saved.alert_id, saved.provider,
-                                    saved.started_at, status, finished_at, error)
-            connection.execute("UPDATE notification_deliveries SET status=?, finished_at=?, error_category=? WHERE attempt_id=?",
-                               (value.status.value, value.finished_at.isoformat(timespec="microseconds"),
-                                value.error_category, attempt_id))
-            return value
+        connection.execute("UPDATE notification_deliveries SET status=status WHERE attempt_id=? AND network_scope=?",
+                           (attempt_id, network_scope))
+        row = connection.execute("SELECT * FROM notification_deliveries WHERE attempt_id=? AND network_scope=?",
+                                 (attempt_id, network_scope)).fetchone()
+        if row is None:
+            return None
+        saved = DeliveryRepository._from_row(row)
+        if saved.status != DeliveryStatus.STARTED:
+            if saved.status != status:
+                raise DeliveryConflictError("delivery outcome already recorded")
+            return saved
+        value = DeliveryAttempt(saved.attempt_id, saved.network_scope, saved.alert_id, saved.provider,
+                                saved.started_at, status, finished_at, error)
+        connection.execute("UPDATE notification_deliveries SET status=?, finished_at=?, error_category=? WHERE attempt_id=?",
+                           (value.status.value, value.finished_at.isoformat(timespec="microseconds"),
+                            value.error_category, attempt_id))
+        return value
 
     def get(self, attempt_id, *, network_scope):
         attempt_identity(attempt_id)

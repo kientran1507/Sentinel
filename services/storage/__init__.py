@@ -15,6 +15,7 @@ from .event_retention import EventRetentionResult, SecurityEventRetention
 from .detections import DetectionRepository
 from .incidents import IncidentConflictError, IncidentRepository
 from .deliveries import DeliveryConflictError, DeliveryRepository
+from .outbox import OutboxConflictError, OutboxRepository
 
 __all__ = [
     "DEFAULT_DATABASE_PATH",
@@ -46,6 +47,8 @@ __all__ = [
     "IncidentConflictError",
     "DeliveryRepository",
     "DeliveryConflictError",
+    "OutboxRepository",
+    "OutboxConflictError",
     "Storage",
     "StorageError",
     "StorageInitializationError",

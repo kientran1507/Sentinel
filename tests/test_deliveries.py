@@ -220,6 +220,8 @@ class TestSQLiteDeliveries(DeliveryRepositoryContract, unittest.TestCase):
         case = persistence.incidents.create(network_scope="lab", case_key="case-1", title="Review evidence",
                                              actor_platform="telegram", actor_id="10", created_at=NOW)
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE notification_outbox_attempts")
+            connection.execute("DROP TABLE notification_outbox")
             connection.execute("DROP TABLE notification_deliveries")
             connection.execute("UPDATE storage_metadata SET schema_version=11")
         self.storage.close()

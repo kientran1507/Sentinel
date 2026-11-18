@@ -20,7 +20,7 @@ Each storage instance owns one connection and a lock that serializes transaction
 
 PostgreSQL inventory transactions additionally lock the asset and address tables before identity lookup to serialize independent writers. Ordinary reads remain available. An existing nonzero lock timeout is honored; otherwise a transaction-local five-second timeout bounds contention waits. A timeout rolls back the operation without automatic retry. This favors correctness over write throughput for the current low-volume monitor; see [concurrency details](asset-identity.md#concurrent-postgresql-writers).
 
-SQLite development code initializes tables and additive column checks in a transaction and records schema version 12. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL development code applies migration 8 through the existing versioned migration path. These Milestone 4 changes have not been applied to production; backend version numbers track separate histories. [Migrations](../../services/storage/migrations.py)
+SQLite development code initializes tables and additive column checks in a transaction and records schema version 13. Inventory writes use `BEGIN IMMEDIATE` to lock before identity lookup across connections. PostgreSQL development code applies migration 9 through the existing versioned migration path. These Milestone 4 changes have not been applied to production; backend version numbers track separate histories. [Migrations](../../services/storage/migrations.py)
 
 The interval upgrade seeds one assignment row from each existing address summary without changing asset IDs or deleting evidence. Initialization applies upgrades atomically; failures preserve the previous schema/version. Take a verified backup before deployment and stop old writers while upgrading; mixed-version writers are not supported. This development task validated upgrades only in disposable databases and did not migrate local/runtime data. Historical intervals already collapsed by older code cannot be reconstructed. Legacy replay keys remain stored; the first version-2 replay may add one evidence row.
 
@@ -73,9 +73,17 @@ An unfinished start has unknown completion and is not an implicit retry request.
 No transport secrets, payload bodies or provider diagnostics are stored in this
 ledger. [Delivery history](../development/milestone-4-delivery-history.md)
 
+PostgreSQL migration 9 / SQLite schema 13 add an explicit durable outbox with
+frozen provider-facing messages, logical destination labels and bounded policy.
+Claims and outcomes share transactions with their send-attempt history; expired
+claims stop as uncertain without automatic reclaim. No runtime scheduler or
+automatic admission is connected. Queue snapshots contain message/device data
+and need coordinated access/retention policy.
+[Outbox contract](../development/milestone-4-outbox.md)
+
 The opt-in discovery sink additionally writes canonical sightings and actual hostname-resolution evidence after attempting inventory persistence. It uses deterministic observation IDs, not a new-asset classification, and never invokes the alert bus. Source batches and each resulting canonical record have independent best-effort writes. See [discovery evidence](security-events.md#discovery-evidence).
 
-Write failures after startup are logged and isolated from monitoring and notifications. Writes are synchronous and may delay a poll. The development send-attempt ledger records provider-call outcomes independently; no persistent dispatch queue, automatic retry or human delivery receipt exists.
+Write failures after startup are logged and isolated from monitoring and notifications. Writes are synchronous and may delay a poll. The development send-attempt ledger records provider-call outcomes independently; the separate explicit outbox provides durable dispatch state but is not connected to runtime sending. No automatic runtime retry or human delivery receipt is enabled.
 
 Each `AssetRepository.record_observation()` call uses one transaction for reconciliation, asset fields, address summaries/intervals, and source evidence. Internal repository helpers reuse that connection. Any write failure rolls back that operation. Legacy device persistence remains a separate preceding transaction, so it can succeed even when the asset operation fails. Event and alert writes are independent as well.
 
@@ -83,7 +91,7 @@ Remote `/devices` uses durable assets when nonempty, with a live MAC overlay. A 
 
 ## Limits and Operations
 
-Initialization rejects a stored schema version newer than the code's supported version. Current development targets PostgreSQL version 8 and SQLite version 12; the accepted running image is unchanged. The check releases the attempted connection and preserves the database version and contents. Deploy matching or newer Sentinel code before reconnecting to an upgraded database. Repeated initialization attempts continue to fail until the versions are compatible.
+Initialization rejects a stored schema version newer than the code's supported version. Current development targets PostgreSQL version 9 and SQLite version 13; the accepted running image is unchanged. The check releases the attempted connection and preserves the database version and contents. Deploy matching or newer Sentinel code before reconnecting to an upgraded database. Repeated initialization attempts continue to fail until the versions are compatible.
 
 See [identity and observations](asset-identity.md) for global MAC policy, preserved intervals, freshness, and replay rules. Shared acceptance tests run against SQLite and PostgreSQL; PostgreSQL has forced independent-writer overlap coverage and SQLite has independent-connection replay coverage.
 

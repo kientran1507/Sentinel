@@ -31,12 +31,13 @@ from tests.test_incidents import IncidentRepositoryContract
 from tests.test_incident_commands import IncidentCommandsContract
 from tests.test_deliveries import DeliveryRepositoryContract
 from tests.test_delivery_commands import DeliveryCommandsContract
+from tests.test_outbox import OutboxContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, AcknowledgementRepositoryContract, IncidentRepositoryContract, IncidentCommandsContract, DeliveryRepositoryContract, DeliveryCommandsContract, unittest.TestCase):
+class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, AcknowledgementRepositoryContract, IncidentRepositoryContract, IncidentCommandsContract, DeliveryRepositoryContract, DeliveryCommandsContract, OutboxContract, unittest.TestCase):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")
@@ -587,6 +588,8 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
         persistence.alerts.save(alert)
         case = self.create_incident()
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE notification_outbox_attempts")
+            connection.execute("DROP TABLE notification_outbox")
             connection.execute("DROP TABLE notification_deliveries")
             connection.execute("UPDATE storage_metadata SET schema_version=7")
         self.storage.close()
@@ -610,3 +613,35 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
         self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".notification_deliveries",)).fetchone()[0])
         self.storage.initialize()
         self.assertEqual(self.incident_repository.get(case.incident_id, network_scope="lab"), case)
+
+    def previous_outbox_schema(self):
+        from services.storage import DeliveryRepository
+        from tests.test_delivery_models import ATTEMPT, NOW
+        value = DeliveryRepository(self.storage).start(attempt_id=ATTEMPT, network_scope="lab", alert_id="alert-1",
+                                                      provider="telegram", started_at=NOW)
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE notification_outbox_attempts")
+            connection.execute("DROP TABLE notification_outbox")
+            connection.execute("UPDATE storage_metadata SET schema_version=8")
+        self.storage.close()
+        return value
+
+    def test_outbox_upgrade_preserves_version_eight_history_without_dispatch_jobs(self):
+        from services.storage import DeliveryRepository
+        from tests.test_outbox_models import NOW
+        value = self.previous_outbox_schema()
+        self.storage.initialize()
+        self.assertEqual(DeliveryRepository(self.storage).get(value.attempt_id, network_scope="lab"), value)
+        self.assertEqual(self.outbox.due(network_scope="lab", now=NOW), [])
+
+    def test_outbox_failed_upgrade_rolls_back_version_eight_and_recovers(self):
+        from services.storage import DeliveryRepository
+        value = self.previous_outbox_schema()
+        broken = Migration(9, "failed outbox upgrade", MIGRATIONS[8].statements + ("INVALID SQL",))
+        with patch("services.storage.migrations.MIGRATIONS", MIGRATIONS[:8] + (broken,)):
+            with self.assertRaises(StorageInitializationError):
+                self.storage.initialize()
+        self.assertEqual(self.admin.execute(f"SELECT schema_version FROM {self.schema}.storage_metadata").fetchone()[0], 8)
+        self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".notification_outbox",)).fetchone()[0])
+        self.storage.initialize()
+        self.assertEqual(DeliveryRepository(self.storage).get(value.attempt_id, network_scope="lab"), value)

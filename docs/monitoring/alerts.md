@@ -28,6 +28,12 @@ the alert. A started row without an outcome means completion is unknown. Audit
 failure preserves existing best-effort sending; no retry queue or automatic
 resend is enabled. These changes are not deployed to the accepted running image.
 
+An [explicit outbox](../development/milestone-4-outbox.md) adds frozen message
+snapshots, logical destination identity, atomic claims and bounded dispatch in
+development. It is not connected to this runtime pipeline or any scheduler.
+Generic transport errors stop as uncertain; real adapters have not been changed
+to claim guaranteed non-acceptance for retries. Tests use fixture senders only.
+
 ```text
 sentinel notification test --provider discord
 sentinel notification test --provider telegram
