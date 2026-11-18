@@ -80,6 +80,16 @@ DETECTION_AUDIT_STATEMENTS = (
 )
 
 
+DETECTION_ACKNOWLEDGEMENT_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS detection_acknowledgements (
+        finding_id TEXT PRIMARY KEY,
+        actor_platform TEXT NOT NULL CHECK (actor_platform IN ('discord', 'telegram')),
+        actor_id TEXT NOT NULL, reason TEXT NOT NULL, acknowledged_at TEXT NOT NULL,
+        FOREIGN KEY (finding_id) REFERENCES detection_findings(finding_id) ON DELETE CASCADE
+    )""",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -145,6 +155,7 @@ MIGRATIONS = (
     Migration(3, "canonical security events", SECURITY_EVENT_STATEMENTS),
     Migration(4, "canonical detection findings", DETECTION_STATEMENTS),
     Migration(5, "audited finding resolution", DETECTION_AUDIT_STATEMENTS),
+    Migration(6, "audited finding acknowledgement", DETECTION_ACKNOWLEDGEMENT_STATEMENTS),
 )
 
 

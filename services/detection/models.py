@@ -87,16 +87,37 @@ class FindingResolution:
 
     def __post_init__(self):
         required_text(self.finding_id, "finding_id")
-        if not isinstance(self.actor_platform, str) or self.actor_platform not in {"discord", "telegram"}:
-            raise ValueError("resolution requires a supported operator platform")
-        if not isinstance(self.actor_id, str) or not self.actor_id.isascii() or not self.actor_id.isdigit() or len(self.actor_id) > 64:
-            raise ValueError("resolution requires a numeric operator ID of at most 64 digits")
-        required_text(self.reason, "reason")
-        reason = self.reason.strip()
-        if len(reason) > 500 or not reason.isprintable():
-            raise ValueError("resolution reason must be a single printable line of 1 through 500 characters")
-        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "reason", _operator_reason(
+            self.actor_platform, self.actor_id, self.reason, "resolution"))
         object.__setattr__(self, "resolved_at", aware_utc(self.resolved_at, "resolved_at"))
+
+
+def _operator_reason(platform, actor_id, reason, action):
+    if not isinstance(platform, str) or platform not in {"discord", "telegram"}:
+        raise ValueError(f"{action} requires a supported operator platform")
+    if not isinstance(actor_id, str) or not actor_id.isascii() or not actor_id.isdigit() or len(actor_id) > 64:
+        raise ValueError(f"{action} requires a numeric operator ID of at most 64 digits")
+    required_text(reason, "reason")
+    reason = reason.strip()
+    if len(reason) > 500 or not reason.isprintable():
+        raise ValueError(f"{action} reason must be a single printable line of 1 through 500 characters")
+    return reason
+
+
+@dataclass(frozen=True)
+class FindingAcknowledgement:
+    """First recorded review; independent of open/resolved lifecycle state."""
+    finding_id: str
+    actor_platform: str
+    actor_id: str
+    reason: str
+    acknowledged_at: datetime
+
+    def __post_init__(self):
+        required_text(self.finding_id, "finding_id")
+        object.__setattr__(self, "reason", _operator_reason(
+            self.actor_platform, self.actor_id, self.reason, "acknowledgement"))
+        object.__setattr__(self, "acknowledged_at", aware_utc(self.acknowledged_at, "acknowledged_at"))
 
 
 @dataclass(frozen=True)

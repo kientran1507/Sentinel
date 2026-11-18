@@ -2,7 +2,7 @@
 import json
 from datetime import datetime
 
-from services.detection.models import DetectionFinding, FindingCursor, FindingResolution, FindingState, FindingStatus, aware_utc, required_text
+from services.detection.models import DetectionFinding, FindingAcknowledgement, FindingCursor, FindingResolution, FindingState, FindingStatus, aware_utc, required_text
 from services.events import SecurityEvent
 from .base import StorageError
 
@@ -137,6 +137,49 @@ class DetectionRepository:
             ).fetchone()
         return FindingResolution(row["finding_id"], row["actor_platform"], row["actor_id"], row["reason"],
                                  datetime.fromisoformat(row["resolved_at"])) if row else None
+
+    def acknowledge(self, finding_id, *, network_scope, actor_platform, actor_id, reason, acknowledged_at):
+        """Record the first review without changing lifecycle or immutable evidence."""
+        required_text(network_scope, "network_scope")
+        acknowledgement = FindingAcknowledgement(finding_id, actor_platform, actor_id, reason, acknowledged_at)
+        with self.storage.transaction() as connection:
+            row = connection.execute(
+                "SELECT last_seen FROM detection_findings WHERE finding_id = ? AND network_scope = ?",
+                (finding_id, network_scope),
+            ).fetchone()
+            if row is None:
+                return None
+            if acknowledgement.acknowledged_at < datetime.fromisoformat(row["last_seen"]):
+                raise ValueError("acknowledgement cannot predate the finding evidence")
+            connection.execute(
+                "INSERT INTO detection_acknowledgements (finding_id, actor_platform, actor_id, reason, acknowledged_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(finding_id) DO NOTHING",
+                (finding_id, acknowledgement.actor_platform, acknowledgement.actor_id, acknowledgement.reason,
+                 acknowledgement.acknowledged_at.isoformat(timespec="microseconds")),
+            )
+            row = connection.execute(
+                "SELECT * FROM detection_acknowledgements WHERE finding_id = ?", (finding_id,),
+            ).fetchone()
+            if row is None:
+                raise StorageError("saved acknowledgement is unavailable")
+            return self._acknowledgement(row)
+
+    def get_acknowledgement(self, finding_id, *, network_scope):
+        required_text(finding_id, "finding_id")
+        required_text(network_scope, "network_scope")
+        with self.storage.transaction() as connection:
+            row = connection.execute(
+                "SELECT audit.* FROM detection_acknowledgements AS audit "
+                "JOIN detection_findings AS finding ON finding.finding_id = audit.finding_id "
+                "WHERE finding.finding_id = ? AND finding.network_scope = ?",
+                (finding_id, network_scope),
+            ).fetchone()
+        return self._acknowledgement(row) if row else None
+
+    @staticmethod
+    def _acknowledgement(row):
+        return FindingAcknowledgement(row["finding_id"], row["actor_platform"], row["actor_id"],
+                                      row["reason"], datetime.fromisoformat(row["acknowledged_at"]))
 
     @staticmethod
     def _state(row):

@@ -26,12 +26,13 @@ from tests.test_findings_commands import FindingsCommandContract
 from tests.test_activity_detection import ActivityDetectionContract
 from tests.test_host_telemetry import HostTelemetryContract
 from tests.test_host_monitor import HostMonitorContract
+from tests.test_finding_acknowledgements import AcknowledgementRepositoryContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, unittest.TestCase):
+class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, AcknowledgementRepositoryContract, unittest.TestCase):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")
@@ -461,6 +462,7 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
         event = self.security_event()
         self.security_events.save(event)
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_acknowledgements")
             connection.execute("DROP TABLE detection_resolutions")
             connection.execute("DROP TABLE detection_evidence")
             connection.execute("DROP TABLE detection_findings")
@@ -473,6 +475,7 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
 
     def test_failed_detection_migration_preserves_version_three(self):
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_acknowledgements")
             connection.execute("DROP TABLE detection_resolutions")
             connection.execute("DROP TABLE detection_evidence")
             connection.execute("DROP TABLE detection_findings")
@@ -512,4 +515,31 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
                 self.storage.initialize()
         self.assertEqual(self.admin.execute(f"SELECT schema_version FROM {self.schema}.storage_metadata").fetchone()[0], 4)
         self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".detection_resolutions",)).fetchone()[0])
+        self.storage.initialize()
+
+    def test_acknowledgement_upgrade_preserves_schema_five_resolution(self):
+        from tests.test_detection import finding, NOW
+        value = finding()
+        self.detection_repository.save_once(value)
+        state = self.detection_repository.resolve(value.finding_id, resolved_at=NOW)
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_acknowledgements")
+            connection.execute("UPDATE storage_metadata SET schema_version = 5")
+        self.storage.close()
+        self.storage.initialize()
+        self.assertEqual(self.detection_repository.get(value.finding_id), value)
+        self.assertEqual(self.detection_repository.get_state(value.finding_id), state)
+        self.assertIsNone(self.detection_repository.get_acknowledgement(value.finding_id, network_scope="lab"))
+
+    def test_acknowledgement_failed_upgrade_rolls_back_version_five(self):
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_acknowledgements")
+            connection.execute("UPDATE storage_metadata SET schema_version = 5")
+        self.storage.close()
+        broken = Migration(6, "failed acknowledgement upgrade", MIGRATIONS[5].statements + ("INVALID SQL",))
+        with patch("services.storage.migrations.MIGRATIONS", MIGRATIONS[:5] + (broken,)):
+            with self.assertRaises(StorageInitializationError):
+                self.storage.initialize()
+        self.assertEqual(self.admin.execute(f"SELECT schema_version FROM {self.schema}.storage_metadata").fetchone()[0], 5)
+        self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".detection_acknowledgements",)).fetchone()[0])
         self.storage.initialize()

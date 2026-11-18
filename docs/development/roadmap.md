@@ -36,13 +36,16 @@ Bounded retries report capacity loss; process exit loses pending in-memory data.
 Production service configuration and retention scheduling stay owner-managed.
 [Host telemetry](../monitoring/host-telemetry.md)
 
-## Next: Milestone 4 Alerting and Incident Management
+## Milestone 4 In Progress
 
-Begin with a small, explicit acknowledgement workflow and its audit trail.
-Then define how related findings form an incident with a timeline, preserving
-original events and finding evidence. Notification retries/delivery history and
-storm prevention follow with isolated tests. Existing resolution behavior must
-remain compatible. These are planned steps, not implemented changes in this review.
+The [first acknowledgement slice](milestone-4-acknowledgement.md), started
+2026-11-18, implements a scoped first-review audit, authorized commands and
+additive development migrations. Existing finding evidence and resolution remain
+intact. Owner accepted-image unit/SQLite regression passed (455 tests); new disposable
+PostgreSQL acceptance remains pending. Nothing has been deployed to production.
+
+Incident identity/linking and timelines, notification retries/delivery history,
+storm prevention and severity policies remain subsequent Milestone 4 work.
 
 Before production reliance, separately validate backup/restore, upgrades with
 stopped writers, platform delivery, real network-partition timeouts, retention

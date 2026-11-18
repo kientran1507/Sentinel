@@ -12,6 +12,103 @@ from tests.test_detection import NOW, finding
 
 
 class FindingsCommandContract:
+    def test_acknowledgement_command_retains_first_actor_and_keeps_finding_open(self):
+        handler = self.finding_handler()
+        value = finding()
+        repository = handler.detection_repository
+        repository.save_once(value)
+        first = handler.handle(f'/acknowledge-finding {value.finding_id} "Investigating the evidence"',
+                               platform="telegram", user_id="10")
+        self.assertTrue(first.ok)
+        audit = repository.get_acknowledgement(value.finding_id, network_scope="lab")
+        self.assertEqual((audit.actor_platform, audit.actor_id, audit.reason),
+                         ("telegram", "10", "Investigating the evidence"))
+        second = handler.handle(f'/acknowledge-finding {value.finding_id} "Another review"',
+                                platform="discord", user_id="20")
+        self.assertEqual(second.data, first.data)
+        self.assertEqual(repository.get_state(value.finding_id).status.value, "open")
+        self.assertEqual(repository.get(value.finding_id), value)
+        detail = handler.handle('/finding ' + value.finding_id, platform="discord", user_id="20")
+        self.assertEqual(detail.data["finding"]["acknowledgement"]["reason"], audit.reason)
+        self.assertIn("Reviewer telegram / 10", detail.text)
+
+    def test_acknowledgement_command_validation_and_authorization_precede_writes(self):
+        handler = self.finding_handler()
+        value = finding()
+        with patch.object(handler.detection_repository, "acknowledge") as acknowledge:
+            self.assertFalse(handler.handle('/acknowledge-finding ' + value.finding_id + ' reviewed',
+                                            platform="telegram", user_id="999").ok)
+            for text in ('/acknowledge-finding', '/acknowledge-finding bad reviewed',
+                         '/acknowledge-finding ' + value.finding_id):
+                self.assertFalse(handler.handle(text, platform="telegram", user_id="10").ok)
+            acknowledge.assert_not_called()
+        other = finding(network_scope="other")
+        handler.detection_repository.save_once(other)
+        denied = handler.handle('/acknowledge-finding ' + other.finding_id + ' reviewed', platform="telegram", user_id="10")
+        missing = handler.handle('/acknowledge-finding ' + value.finding_id + ' reviewed', platform="telegram", user_id="10")
+        self.assertEqual(denied.text, missing.text)
+        self.assertFalse(denied.ok)
+
+    def test_acknowledgement_command_reason_bounds_scope_and_rate_limits(self):
+        handler = self.finding_handler()
+        value = finding()
+        handler.detection_repository.save_once(value)
+        for reason in ('" "', '"line\nbreak"', 'a' * 501):
+            self.assertFalse(handler.handle('/acknowledge-finding ' + value.finding_id + ' ' + reason,
+                                            platform="telegram", user_id="10").ok)
+        self.assertIsNone(handler.detection_repository.get_acknowledgement(value.finding_id, network_scope="lab"))
+        handler.detection_scope = None
+        self.assertFalse(handler.handle('/acknowledge-finding ' + value.finding_id + ' reviewed',
+                                        platform="telegram", user_id="10").ok)
+        handler.detection_scope = "lab"
+        handler.rate_limit = 1
+        with patch.object(handler.detection_repository, "acknowledge") as acknowledge:
+            self.assertFalse(handler.handle('/acknowledge-finding ' + value.finding_id + ' reviewed',
+                                            platform="telegram", user_id="10").ok)
+            acknowledge.assert_not_called()
+
+    def test_acknowledgement_storage_and_detail_read_errors_are_sanitized(self):
+        handler = self.finding_handler()
+        value = finding()
+        handler.detection_repository.save_once(value)
+        with patch.object(handler.detection_repository, "acknowledge", side_effect=RuntimeError("private-audit-row")):
+            with self.assertLogs("services.commands.handler", level="ERROR") as logs:
+                response = handler.handle('/acknowledge-finding ' + value.finding_id + ' reviewed',
+                                          platform="telegram", user_id="10")
+        self.assertFalse(response.ok)
+        self.assertEqual(response.data, {})
+        self.assertNotIn('private-audit-row', response.text + '\n'.join(logs.output))
+        with patch.object(handler.detection_repository, "get_acknowledgement", side_effect=RuntimeError("private-read-row")):
+            with self.assertLogs("services.commands.handler", level="ERROR") as logs:
+                response = handler.handle('/finding ' + value.finding_id, platform="discord", user_id="20")
+        self.assertFalse(response.ok)
+        self.assertEqual(response.data, {})
+        self.assertNotIn('private-read-row', response.text + '\n'.join(logs.output))
+
+    def test_acknowledgement_and_resolution_display_are_bounded_together(self):
+        from services.commands.renderers import render_discord, render_telegram
+        from tests.test_command_renderers import FakeDiscord
+        handler = self.finding_handler()
+        value = finding(rule_id='😀' * 100, message='😀' * 1000, source='😀' * 1000,
+                        collector='😀' * 1000, asset_id='😀' * 1000,
+                        event_ids=tuple(str(i) + '😀' * 60 for i in range(3)))
+        repository = handler.detection_repository
+        repository.save_once(value)
+        reason = '😀' * 500
+        self.assertTrue(handler.handle('/acknowledge-finding ' + value.finding_id + ' ' + reason,
+                                       platform="telegram", user_id="10").ok)
+        self.assertTrue(handler.handle('/resolve-finding ' + value.finding_id + ' ' + reason,
+                                       platform="telegram", user_id="10").ok)
+        response = handler.handle('/finding ' + value.finding_id, platform="discord", user_id="20")
+        self.assertTrue(response.ok)
+        self.assertIn('[reason truncated]', response.text)
+        self.assertEqual(repository.get_acknowledgement(value.finding_id, network_scope="lab").reason, reason)
+        self.assertEqual(repository.get_resolution(value.finding_id, network_scope="lab").reason, reason)
+        text, mode = render_telegram(response)
+        self.assertIsNone(mode)
+        self.assertLess(len(text.encode('utf-16-le')) // 2, 4096)
+        self.assertLess(len(render_discord(response, FakeDiscord).kwargs['description'].encode('utf-16-le')) // 2, 4096)
+
     def test_resolution_command_records_authenticated_actor_and_reason(self):
         handler = self.finding_handler()
         value = finding()

@@ -43,6 +43,7 @@ Local `devices` reads a new process-local registry, normally empty. `--refresh` 
 | `/alert-history` | Persisted alerts; Discord spelling is `/alert_history` |
 | `/findings` | Persisted detection findings and current lifecycle state in the runtime's configured scope |
 | `/finding` | One scoped finding with source, lifecycle, policy settings, and evidence references |
+| `/acknowledge-finding` | First-review audit with required reason; Discord spelling is `/acknowledge_finding` (Milestone 4 development code) |
 | `/resolve-finding` | Scoped resolution with a required reason and durable operator audit; Discord spelling is `/resolve_finding` |
 
 Assets without a live match show `UNKNOWN`. A nonempty durable inventory does not union in live-only devices. No remote command triggers scanning or hostname/vendor lookup.
@@ -99,3 +100,13 @@ Discord exposes a named `finding_id` option. Finding IDs must use the complete `
 Scope is supplied by runtime wiring. Missing storage or scope returns an unavailable response. Invalid/repeated options are rejected, query errors discard partial results, and the existing allowlist/rate-limit checks run before storage access. [Finding lifecycle](architecture/detection-engine.md#lifecycle)
 
 Use `/resolve-finding <finding-id> <reason>` in Telegram, or Discord `/resolve_finding` with its required reason field. Reasons must contain 1 through 500 printable characters on one line. Existing allowlisted operators can resolve findings in the runtime scope. The state change and operator platform/ID, reason, and UTC timestamp commit together. Retries preserve the first resolution. `/finding` displays its recorded operator and reason. Older internal resolutions retain their original state and have no attributed operator audit.
+
+Milestone 4 development adds `/acknowledge-finding <finding-id> <reason>` and
+Discord `/acknowledge_finding`. It records the first authenticated review without
+changing open/resolved state or evidence. It also accepts an already resolved
+finding as a review without reopening it. Retries retain the first reviewer,
+reason and timestamp. The existing scope, allowlist, rate-limit and reason bounds
+apply. `/finding` displays acknowledgement and resolution independently; long
+review reasons are shortened to 160 characters with a marker while full reasons
+remain stored. This needs PostgreSQL migration 6 / SQLite schema 10 and a reviewed
+rollout before use with production. [Contract and test status](development/milestone-4-acknowledgement.md)

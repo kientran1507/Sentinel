@@ -14,6 +14,7 @@ from services.storage import (
     StorageNotInitializedError,
     get_database_path,
 )
+from services.storage.sqlite import SCHEMA_VERSION
 
 
 class FakeStorage(Storage):
@@ -53,7 +54,7 @@ class TestSQLiteStorage(unittest.TestCase):
                 row = connection.execute(
                     "SELECT schema_version FROM storage_metadata WHERE id = 1"
                 ).fetchone()
-            self.assertEqual(row[0], 9)
+            self.assertEqual(row[0], SCHEMA_VERSION)
             self.assertIsNotNone(
                 connection.execute(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'devices'"
@@ -88,12 +89,13 @@ class TestSQLiteStorage(unittest.TestCase):
             with closing(sqlite3.connect(path)) as connection:
                 with connection:
                     connection.execute("CREATE TABLE storage_metadata (id INTEGER PRIMARY KEY, schema_version INTEGER NOT NULL)")
-                    connection.execute("INSERT INTO storage_metadata VALUES (1, 10)")
+                    connection.execute("INSERT INTO storage_metadata VALUES (1, ?)", (SCHEMA_VERSION + 1,))
             before = path.read_bytes()
             storage = SQLiteStorage(path)
 
             for _ in range(2):
-                with self.assertRaisesRegex(StorageInitializationError, "schema version 10 exceeds supported version 9"):
+                with self.assertRaisesRegex(StorageInitializationError,
+                                           f"schema version {SCHEMA_VERSION + 1} exceeds supported version {SCHEMA_VERSION}"):
                     storage.initialize()
                 self.assertFalse(storage.is_initialized)
                 self.assertEqual(path.read_bytes(), before)

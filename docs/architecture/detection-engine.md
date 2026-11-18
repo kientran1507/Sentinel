@@ -21,7 +21,7 @@ flowchart LR
 
 Canonical commit precedes finding persistence. Each rule and finding write has an independent failure boundary, with safe error classification in logs. Canonical/legacy evidence can survive a failed detection attempt. An explicit replay can retry evaluation. Evaluation uses current inventory trust and currently retained canonical history, so replay results reflect those inputs at evaluation time. Ingestion and detection remain synchronous and can delay a poll during slow storage operations.
 
-The existing device event bus supplies legacy alerts and notifications. Detection findings are available through the repository, a scoped `/findings` list, and `/finding` detail inspection. Allowlisted operators can resolve findings with an audited reason. API integration, acknowledgement, and incident workflows are later work. The current callbacks and history interfaces are described in the event contract. [Canonical events](security-events.md)
+The existing device event bus supplies legacy alerts and notifications. Detection findings are available through the repository, a scoped `/findings` list, and `/finding` detail inspection. Allowlisted operators can resolve findings with an audited reason. Milestone 4 development adds independent first-review acknowledgement; API integration and incident workflows remain later work. The current callbacks and history interfaces are described in the event contract. [Canonical events](security-events.md)
 
 ## Rule Contract and Configuration
 
@@ -58,6 +58,7 @@ PostgreSQL migration 4 / SQLite schema 8 add these entities through the existing
 | `detection_findings` | Finding ID primary key, indexed rule/scope/asset/evidence time, JSON payload, status, and optional resolution time |
 | `detection_evidence` | Composite finding/event primary key, foreign key to the finding, indexed soft reference to canonical event ID |
 | `detection_resolutions` | Finding ID primary/foreign key, operator platform and ID, reason, and resolution time; added by PostgreSQL migration 5 / SQLite schema 9 |
+| `detection_acknowledgements` | First reviewer platform/ID, reason and UTC time, keyed to the finding; Milestone 4 PostgreSQL migration 6 / SQLite schema 10 |
 
 Inventory asset IDs and canonical event IDs are soft references. Canonical retention or inventory deletion preserves the finding and evidence IDs. Investigators may encounter evidence IDs whose source rows have expired. Finding retention and evidence retention need a coordinated deployment policy.
 
@@ -81,7 +82,15 @@ Resolution preserves the evidence payload. Replay retains the resolved state. A 
 
 Allowlisted operators use `/resolve-finding <id> <reason>` or Discord `/resolve_finding`. Authorization and rate limits precede storage access. `/finding` shows the recorded operator and reason. Unknown and out-of-scope IDs share a response. Historical resolutions created through the internal `resolve()` method retain their original state and attribution remains unavailable. Migration and repeated resolution preserve that history.
 
-Acknowledgement, reopening, automatic recovery-driven closure, and incident correlation remain future lifecycle work. An open historical failure finding can coexist with a currently recovered collector. Finding review uses the commands, and existing legacy alert delivery continues under its current rules.
+Milestone 4 development adds `acknowledge()` / `get_acknowledgement()` with exact
+scope and an immutable first-review record. Acknowledgement does not introduce
+a new lifecycle status, resolve or reopen a finding, or alter evidence. Review
+of an already resolved finding is allowed. Independent writers/retries preserve
+the first committed audit. [Acknowledgement contract and rollout boundary](../development/milestone-4-acknowledgement.md)
+
+Reopening, automatic recovery-driven closure and incident correlation remain
+future work. An open historical failure finding can coexist with a recovered
+collector. Legacy alert delivery continues under its current rules.
 
 ## Validation and Next Work
 

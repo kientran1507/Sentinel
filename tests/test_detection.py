@@ -759,6 +759,7 @@ class TestSQLiteDetection(DetectionRepositoryContract, DetectionIngestionContrac
         event = SecurityEvent(SecurityEventType.COLLECTOR_ERROR, "test", "Failure", NOW)
         SecurityEventRepository(self.storage).save(event)
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_acknowledgements")
             connection.execute("DROP TABLE detection_resolutions")
             connection.execute("DROP TABLE detection_evidence")
             connection.execute("DROP TABLE detection_findings")
@@ -771,6 +772,7 @@ class TestSQLiteDetection(DetectionRepositoryContract, DetectionIngestionContrac
     def test_failed_detection_migration_rolls_back_schema_seven(self):
         from services.storage.migrations import DETECTION_STATEMENTS
         with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE detection_acknowledgements")
             connection.execute("DROP TABLE detection_resolutions")
             connection.execute("DROP TABLE detection_evidence")
             connection.execute("DROP TABLE detection_findings")

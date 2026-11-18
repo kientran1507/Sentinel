@@ -122,7 +122,7 @@ class TestCommands(unittest.TestCase):
         client = bot._build_client(FakeDiscord)
         self.assertFalse(client.intents.message_content)
         tree = FakeTree.last
-        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings", "finding", "resolve_finding"})
+        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings", "finding", "acknowledge_finding", "resolve_finding"})
         self.assertEqual(set(client.events), {"on_ready", "setup_hook"})
         asyncio.run(client.events["setup_hook"]())
         self.assertTrue(tree.synced_global)
@@ -148,11 +148,16 @@ class TestCommands(unittest.TestCase):
             dispatch.assert_called_once_with("/findings --limit 2 --before page-token", platform="discord", user_id="20")
         finding_id = "detection:v1:" + "a" * 64
         with patch.object(self.handler, "handle", wraps=self.handler.handle) as dispatch:
+            asyncio.run(tree.commands["acknowledge_finding"](interaction, finding_id=finding_id,
+                                                           reason="Owner's first review"))
+            command = CommandParser().parse(dispatch.call_args.args[0])
+            self.assertEqual(command.name, "acknowledge-finding")
+            self.assertEqual(command.args, [finding_id, "Owner's first review"])
+        with patch.object(self.handler, "handle", wraps=self.handler.handle) as dispatch:
             asyncio.run(tree.commands["finding"](interaction, finding_id=finding_id))
             dispatch.assert_called_once_with("/finding " + finding_id, platform="discord", user_id="20")
         with patch.object(self.handler, "handle", wraps=self.handler.handle) as dispatch:
             asyncio.run(tree.commands["resolve_finding"](interaction, finding_id=finding_id, reason="Owner's review"))
-            from services.commands.models import CommandParser
             command = CommandParser().parse(dispatch.call_args.args[0])
             self.assertEqual(command.name, "resolve-finding")
             self.assertEqual(command.args, [finding_id, "Owner's review"])

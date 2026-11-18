@@ -28,9 +28,14 @@ HELP_TEXT = """Sentinel Commands
 /alert-history  Show persisted alert history
 /findings  Show detection findings
 /finding  Inspect a detection finding
+/acknowledge-finding  Record that a finding has been reviewed
 /resolve-finding  Resolve a finding with an audited reason
 /help     Show this help"""
 UNAUTHORIZED = "You are not authorized to use Sentinel commands."
+
+
+def _review_reason_summary(reason):
+    return reason if len(reason) <= 160 else reason[:160] + " [reason truncated]"
 
 
 def parse_allowed_ids(value: str | None) -> frozenset[str]:
@@ -109,8 +114,8 @@ class CommandHandler:
         return True
 
     def _dispatch(self, command: Command, *, platform: str, user_id: str) -> CommandResponse:
-        if command.name == "resolve-finding":
-            return self._resolve_finding(command.name, command.args, platform=platform, user_id=user_id)
+        if command.name in {"resolve-finding", "acknowledge-finding"}:
+            return self._review_finding(command.name, command.args, platform=platform, user_id=user_id)
         handlers = {
             "help": self._help,
             "devices": self._devices,
@@ -386,29 +391,36 @@ class CommandHandler:
             logger.error("Detection query failed: error=%s", type(exc).__name__)
             return CommandResponse("Sentinel could not read detection findings.", ok=False, command=command_name)
 
-    def _resolve_finding(self, command_name, args, *, platform, user_id):
+    def _review_finding(self, command_name, args, *, platform, user_id):
         if self.detection_repository is None or not isinstance(self.detection_scope, str) or not self.detection_scope.strip():
             return CommandResponse("Detection storage is unavailable.", ok=False, command=command_name)
-        usage = "Use /resolve-finding <finding-id> <reason>. A single-line reason of 1-500 characters is required."
+        acknowledgement = command_name == "acknowledge-finding"
+        action = "acknowledgement" if acknowledgement else "resolution"
+        completed = "acknowledged" if acknowledgement else "resolved"
+        time_field = "acknowledged_at" if acknowledgement else "resolved_at"
+        usage = f"Use /{command_name} <finding-id> <reason>. A single-line reason of 1-500 characters is required."
         if len(args) < 2 or re.fullmatch(r"detection:v1:[0-9a-f]{64}", args[0]) is None:
             return CommandResponse(usage, ok=False, command=command_name)
         try:
-            state = self.detection_repository.resolve_audited(
+            review = self.detection_repository.acknowledge if acknowledgement else self.detection_repository.resolve_audited
+            state = review(
                 args[0], network_scope=self.detection_scope, actor_platform=platform, actor_id=user_id,
-                reason=" ".join(args[1:]), resolved_at=datetime.now(timezone.utc),
+                reason=" ".join(args[1:]), **{time_field: datetime.now(timezone.utc)},
             )
             if state is None:
                 return CommandResponse("Finding was not found.", ok=False, command=command_name)
-            return CommandResponse(
-                f"Finding resolved\n{state.finding_id}\nResolved {state.resolved_at.isoformat()}",
-                command=command_name, data={"finding_id": state.finding_id, "status": state.status.value,
-                                            "resolved_at": state.resolved_at.isoformat()},
-            )
+            timestamp = getattr(state, time_field).isoformat()
+            data = {"finding_id": state.finding_id, time_field: timestamp}
+            if not acknowledgement:
+                data["status"] = state.status.value
+            return CommandResponse(f"Finding {completed}\n{state.finding_id}\n{completed.capitalize()} {timestamp}",
+                                   command=command_name, data=data)
         except ValueError:
-            return CommandResponse(usage + " Resolution cannot predate the evidence.", ok=False, command=command_name)
+            return CommandResponse(usage + f" {action.capitalize()} cannot predate the evidence.", ok=False, command=command_name)
         except Exception as exc:
-            logger.error("Finding resolution failed: error=%s", type(exc).__name__)
-            return CommandResponse("Sentinel could not resolve this finding.", ok=False, command=command_name)
+            logger.error("Finding %s failed: error=%s", action, type(exc).__name__)
+            verb = "acknowledge" if acknowledgement else "resolve"
+            return CommandResponse(f"Sentinel could not {verb} this finding.", ok=False, command=command_name)
 
     def _finding(self, command_name="finding", args=None):
         if self.detection_repository is None or not isinstance(self.detection_scope, str) or not self.detection_scope.strip():
@@ -450,14 +462,26 @@ class CommandHandler:
                      item["message"], f"Asset {item['asset_id']}",
                      f"Source {item['source']} / collector {item['collector']}",
                      f"Evidence time {item['first_seen']} to {item['last_seen']}"]
+            acknowledgement = self.detection_repository.get_acknowledgement(
+                finding.finding_id, network_scope=self.detection_scope)
+            if acknowledgement is not None:
+                reason = _review_reason_summary(acknowledgement.reason)
+                item["acknowledgement"] = {
+                    "actor_platform": acknowledgement.actor_platform, "actor_id": acknowledgement.actor_id,
+                    "reason": reason, "acknowledged_at": acknowledgement.acknowledged_at.isoformat(),
+                }
+                lines.extend([f"Acknowledged {acknowledgement.acknowledged_at.isoformat()}",
+                              f"Reviewer {acknowledgement.actor_platform} / {acknowledgement.actor_id}",
+                              f"Review reason {reason}"])
             if item["resolved_at"]:
                 lines.append(f"Resolved {item['resolved_at']}")
                 resolution = self.detection_repository.get_resolution(finding.finding_id, network_scope=self.detection_scope)
                 if resolution is not None:
+                    reason = _review_reason_summary(resolution.reason)
                     item["resolution"] = {"actor_platform": resolution.actor_platform,
-                                          "actor_id": resolution.actor_id, "reason": resolution.reason}
+                                          "actor_id": resolution.actor_id, "reason": reason}
                     lines.extend([f"Operator {resolution.actor_platform} / {resolution.actor_id}",
-                                  f"Reason {resolution.reason}"])
+                                  f"Reason {reason}"])
             if item["window_seconds"] is not None:
                 lines.append(f"Threshold {item['threshold']} in {item['window_seconds']} seconds")
             lines.append(f"Evidence references ({len(references)} of {item['evidence_count']})")

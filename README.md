@@ -8,6 +8,10 @@ Milestone 3 completed bounded detection-engine acceptance on 2026-11-17. It adds
 
 ## Setup
 
+Milestone 4 has started in the development branch with audited finding
+acknowledgement. Its commands and additive schema changes are not deployed to
+the accepted running image. [First-slice contract and validation](docs/development/milestone-4-acknowledgement.md)
+
 Use Python 3.10 or later, as required by the package metadata. Pi acceptance used Python 3.11; every newer interpreter/dependency combination has not been certified.
 
 ```powershell

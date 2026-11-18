@@ -82,6 +82,10 @@ class DiscordCommandBot:
         async def finding_command(interaction, finding_id: str):
             await respond(interaction, "finding", [finding_id])
 
+        @tree.command(name="acknowledge_finding", description="Acknowledge a finding with an audited reason")
+        async def acknowledge_finding_command(interaction, finding_id: str, reason: str):
+            await respond(interaction, "acknowledge-finding", [quote(finding_id), quote(reason)])
+
         @tree.command(name="resolve_finding", description="Resolve a finding with an audited reason")
         async def resolve_finding_command(interaction, finding_id: str, reason: str):
             await respond(interaction, "resolve-finding", [quote(finding_id), quote(reason)])
