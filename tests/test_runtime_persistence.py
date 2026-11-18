@@ -76,6 +76,7 @@ class TestRuntimePersistence(unittest.TestCase):
                             self.assertIs(runtime.monitor.on_health.__self__.storage, runtime.storage)
                             self.assertIs(runtime.command_service.handler.detection_repository.storage, runtime.storage)
                             self.assertIs(runtime.command_service.handler.incident_repository.storage, runtime.storage)
+                            self.assertIs(runtime.command_service.handler.delivery_repository.storage, runtime.storage)
                             self.assertEqual(runtime.monitor.on_health.__self__.detection_engine.registry.rules,
                                              default_rules(collector_failure_rule=policy))
                             self.assertTrue(Path(path).is_file())
@@ -97,7 +98,7 @@ class TestRuntimePersistence(unittest.TestCase):
             self.assertEqual(collector.collect()[0].mac_address, "aa:bb:cc:dd:ee:01")
 
             provider = RecordingProvider()
-            notifications = NotificationManager([provider])
+            notifications = NotificationManager([provider], audit=persistence.delivery_audit)
             notifying = PersistingNotificationManager(notifications, persistence)
             bus = EventBus(asynchronous=False)
             engine = AlertEngine(notification_manager=notifying)
@@ -120,6 +121,10 @@ class TestRuntimePersistence(unittest.TestCase):
             self.assertEqual(AlertRepository(storage).get(provider.alerts[0].alert_id).alert_id, provider.alerts[0].alert_id)
             self.assertEqual(provider.alerts[0].alert_type, AlertType.DEVICE_OFFLINE)
             self.assertEqual(provider.alerts[0].severity, Severity.WARNING)
+            deliveries = persistence.deliveries.query(network_scope=persistence.assets.network_scope)
+            self.assertEqual(len(deliveries), 1)
+            self.assertEqual(deliveries[0].status.value, "succeeded")
+            self.assertEqual(deliveries[0].alert_id, provider.alerts[0].alert_id)
 
     def test_shared_storage_supports_monitor_thread_writes(self):
         with self.storage_context() as storage:

@@ -29,12 +29,14 @@ from tests.test_host_monitor import HostMonitorContract
 from tests.test_finding_acknowledgements import AcknowledgementRepositoryContract
 from tests.test_incidents import IncidentRepositoryContract
 from tests.test_incident_commands import IncidentCommandsContract
+from tests.test_deliveries import DeliveryRepositoryContract
+from tests.test_delivery_commands import DeliveryCommandsContract
 
 
 TEST_DATABASE_URL = os.getenv("SENTINEL_TEST_DATABASE_URL")
 
 
-class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, AcknowledgementRepositoryContract, IncidentRepositoryContract, IncidentCommandsContract, unittest.TestCase):
+class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepositoryContract, SecurityEventIngestionContract, DiscoveryEventIngestionContract, RouterEventIngestionContract, CollectorHealthIngestionContract, DetectionRepositoryContract, DetectionIngestionContract, FindingsCommandContract, ActivityDetectionContract, HostTelemetryContract, HostMonitorContract, AcknowledgementRepositoryContract, IncidentRepositoryContract, IncidentCommandsContract, DeliveryRepositoryContract, DeliveryCommandsContract, unittest.TestCase):
     def setUp(self):
         if not TEST_DATABASE_URL:
             self.skipTest("SENTINEL_TEST_DATABASE_URL is not configured")
@@ -576,3 +578,35 @@ class TestPostgreSQLStorage(InventoryAcceptanceContract, SecurityEventRepository
         self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".incidents",)).fetchone()[0])
         self.storage.initialize()
         self.assertEqual(self.detection_repository.get_acknowledgement(value.finding_id, network_scope="lab"), ack)
+
+    def delivery_previous_schema(self):
+        from services.alerting.engine import AlertEngine
+        from services.discovery.models import DeviceEvent, DeviceEventType
+        persistence = RuntimePersistence(self.storage, network_scope="lab")
+        alert = AlertEngine().handle_event(DeviceEvent(DeviceEventType.DEVICE_OFFLINE, "02:11:22:33:44:55"))
+        persistence.alerts.save(alert)
+        case = self.create_incident()
+        with self.storage.transaction() as connection:
+            connection.execute("DROP TABLE notification_deliveries")
+            connection.execute("UPDATE storage_metadata SET schema_version=7")
+        self.storage.close()
+        return alert, case
+
+    def test_delivery_upgrade_preserves_schema_seven_alert_and_incident(self):
+        alert, case = self.delivery_previous_schema()
+        self.storage.initialize()
+        persistence = RuntimePersistence(self.storage, network_scope="lab")
+        self.assertEqual(persistence.alerts.get(alert.alert_id).to_dict(), alert.to_dict())
+        self.assertEqual(self.incident_repository.get(case.incident_id, network_scope="lab"), case)
+        self.assertEqual(self.delivery_repository.query(network_scope="lab"), [])
+
+    def test_delivery_failed_upgrade_rolls_back_version_seven_and_recovers(self):
+        alert, case = self.delivery_previous_schema()
+        broken = Migration(8, "failed delivery upgrade", MIGRATIONS[7].statements + ("INVALID SQL",))
+        with patch("services.storage.migrations.MIGRATIONS", MIGRATIONS[:7] + (broken,)):
+            with self.assertRaises(StorageInitializationError):
+                self.storage.initialize()
+        self.assertEqual(self.admin.execute(f"SELECT schema_version FROM {self.schema}.storage_metadata").fetchone()[0], 7)
+        self.assertIsNone(self.admin.execute("SELECT to_regclass(%s)", (self.schema + ".notification_deliveries",)).fetchone()[0])
+        self.storage.initialize()
+        self.assertEqual(self.incident_repository.get(case.incident_id, network_scope="lab"), case)

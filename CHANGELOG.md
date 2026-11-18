@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added scoped notification send-attempt history, explicit uncertain outcomes, sanitized audit failure isolation and read-only paginated history commands; PostgreSQL 8 / SQLite 12 schemas are development-only, with automatic retries still disabled.
 - Added scoped investigation cases, immutable timelines, finding references, notes and resolution through authorized Discord/Telegram commands; case closure preserves original findings. PostgreSQL 7 / SQLite 11 schemas are development-only.
 - Started Milestone 4 with scoped first-review acknowledgement, authorized Telegram/Discord commands, bounded audit display and additive development-only SQLite/PostgreSQL migrations; production is unchanged.
 - Fixed regular-package discovery so built distributions include the service modules, and aligned the Python minimum with the source (3.10).

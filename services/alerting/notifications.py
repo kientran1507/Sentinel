@@ -165,13 +165,20 @@ class TelegramNotificationProvider(NotificationProvider):
 
 
 class NotificationManager:
-    def __init__(self, providers=None):
+    def __init__(self, providers=None, *, audit=None):
         self.providers = list(providers or [])
+        self.audit = audit
 
     def notify(self, alert: Alert) -> dict[str, bool]:
         results = {}
         for provider in self.providers:
             logger.info("Sending notification: provider=%s alert=%s", provider.name, alert.alert_id)
+            attempt = None
+            if self.audit is not None:
+                try:
+                    attempt = self.audit.start(provider.name, alert)
+                except Exception as exc:
+                    logger.error("Delivery audit failed: operation=start error=%s", type(exc).__name__)
             try:
                 provider.send(alert)
                 logger.info("Notification sent: provider=%s alert=%s", provider.name, alert.alert_id)
@@ -179,6 +186,11 @@ class NotificationManager:
             except Exception as exc:
                 logger.error("Notification failed: provider=%s error=%s", provider.name, type(exc).__name__)
                 results[provider.name] = False
+            if attempt is not None:
+                try:
+                    self.audit.finish(attempt, succeeded=results[provider.name])
+                except Exception as exc:
+                    logger.error("Delivery audit failed: operation=finish error=%s", type(exc).__name__)
         return results
 
     def test(self, provider_name: str = "all") -> dict[str, bool]:

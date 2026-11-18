@@ -51,6 +51,7 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
             "/incidents — List cases\n/incident — Inspect a timeline\n"
             "/create-incident — Create a case\n/link-finding — Link evidence\n"
             "/incident-note — Add a note\n/resolve-incident — Close a case\n\n"
+            "<b>Notification history</b>\n\n/deliveries — List send attempts\n/delivery — Inspect one attempt\n\n"
             "<b>General</b>\n\n/help — Show this help",
             "HTML",
         )
@@ -69,7 +70,7 @@ def render_telegram(response: CommandResponse) -> tuple[str, str | None]:
                 lines.extend([f"{_status_icon(device['state'])} <b>{name}</b>", f"   State: <b>{state}</b>", f"   IP: <code>{ip}</code>", f"   MAC: <code>{mac}</code>", f"   Vendor: {vendor}", ""])
             lines.extend(["━━━━━━━━━━━━━━━━", f"Total: <b>{data['total']}</b>", f"🟢 Online: {data['online']}", f"🔴 Offline: {data['offline']}", f"⚪ Unknown: {data['unknown']}"])
         return "\n".join(lines), "HTML"
-    if command in INCIDENT_TITLES or command in {"findings", "finding", "resolve-finding", "acknowledge-finding"}:
+    if command in INCIDENT_TITLES or command in {"findings", "finding", "resolve-finding", "acknowledge-finding", "deliveries", "delivery"}:
         return response.text, None
     if command == "status":
         return ("\n".join([
@@ -140,9 +141,12 @@ def render_discord(response: CommandResponse, discord_module=None):
         embed.add_field(name="Incidents", value="`/incidents` List cases\n`/incident` Inspect timeline\n"
                         "`/create_incident` Create case\n`/link_finding` Link evidence\n"
                         "`/incident_note` Add note\n`/resolve_incident` Close case", inline=False)
+        embed.add_field(name="Notification history", value="`/deliveries` List send attempts\n`/delivery` Inspect one attempt", inline=False)
         return embed
     if command in INCIDENT_TITLES:
         return discord.Embed(title=INCIDENT_TITLES[command], description=response.text.split("\n\n", 1)[-1], color=0x2F80ED)
+    if command in {"deliveries", "delivery"}:
+        return discord.Embed(title="Sentinel Delivery History", description=response.text.split("\n\n", 1)[-1], color=0x2F80ED)
     if command in {"findings", "finding", "resolve-finding", "acknowledge-finding"}:
         title = {"finding": "Sentinel Finding", "findings": "Sentinel Findings",
                  "resolve-finding": "Sentinel Finding Resolution",

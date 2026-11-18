@@ -119,6 +119,20 @@ class DiscordCommandBot:
             args = [quote(incident_id)] + (["--before", quote(before)] if before is not None else [])
             await respond(interaction, "incident", args)
 
+        @tree.command(name="deliveries", description="List notification send-attempt history")
+        async def deliveries_command(interaction, limit: int | None = None, status: str | None = None,
+                                     provider: str | None = None, alert: str | None = None, before: str | None = None):
+            args = []
+            for flag, value in (("--limit", limit), ("--status", status), ("--provider", provider),
+                                ("--alert", alert), ("--before", before)):
+                if value is not None:
+                    args.extend([flag, quote(str(value))])
+            await respond(interaction, "deliveries", args)
+
+        @tree.command(name="delivery", description="Inspect one notification send attempt")
+        async def delivery_command(interaction, attempt_id: str):
+            await respond(interaction, "delivery", [quote(attempt_id)])
+
         @tree.command(name="events", description="Show historical device events")
         async def events_command(interaction, limit: int | None = None, device: str | None = None, type: str | None = None):
             args = []

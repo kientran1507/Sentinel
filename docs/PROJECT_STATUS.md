@@ -18,8 +18,15 @@ The [incident slice](development/milestone-4-incidents.md) adds operator-created
 cases, finding links, notes, immutable audit timelines and scoped resolution.
 Owner accepted-image unit/SQLite regression passed: 482 passed, 211 PostgreSQL
 skips, zero errors/failures. PostgreSQL migration 7 / SQLite schema 11 remain
-development-only. Notification delivery/retries and automatic correlation policy
+development-only. Durable notification dispatch/retries and automatic correlation policy
 are still pending.
+
+The [notification-history slice](development/milestone-4-delivery-history.md)
+adds scoped per-provider send-attempt records and read-only paginated commands.
+Unknown completion is distinct from provider success/failure; audit errors preserve
+existing sending behavior. PostgreSQL 8 / SQLite 12 are development-only. Owner
+accepted-image regression passed: 505 passed, 230 PostgreSQL skips, zero errors/
+failures. Automatic retries remain disabled; new PostgreSQL validation is pending.
 
 - Single Python runtime: ZTE H3601P collection, presence tracking, typed device events, alert rules, and Discord/Telegram notifications and commands.
 - Separate ARP/ICMP discovery helper with optional hostname enrichment and persistence.

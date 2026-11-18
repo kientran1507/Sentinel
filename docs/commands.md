@@ -133,3 +133,22 @@ replays retain the first audit. No notification or automatic correlation runs.
 These commands require the development PostgreSQL 7 / SQLite 11 schema and a
 separately reviewed rollout. They are not available in the running accepted
 image. See the [incident contract and test results](development/milestone-4-incidents.md).
+
+## Notification send-attempt history (Milestone 4 development)
+
+```text
+/deliveries [--limit 1-5] [--status started|succeeded|failed|all] [--provider name] [--alert id] [--before cursor]
+/delivery <attempt-id>
+```
+
+Both platforms use these names; Discord has separate optional filter fields.
+Only allowlisted users can read the configured network scope. Defaults show five
+newest attempts of any status. Use the returned next-page command to retain all
+filters. Missing and out-of-scope IDs have the same response. Reads send nothing.
+
+`started` means completion is unknown until an outcome commits; `succeeded` means
+the provider call returned, not that a person received the message. The journal
+holds no transport credentials, message bodies or provider response text. Failed
+provider calls have the fixed `provider-error` category. Automatic retries remain
+disabled. This requires development PostgreSQL 8 / SQLite 12 and a separately
+reviewed rollout. [Contract and validation](development/milestone-4-delivery-history.md)

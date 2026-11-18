@@ -17,6 +17,7 @@ from services.storage.history import HistoryService
 from .history import AlertHistory
 from .models import Command, CommandParser, CommandResponse
 from .incidents import INCIDENT_COMMANDS, IncidentCommands
+from .deliveries import DeliveryCommands
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ HELP_TEXT = """Sentinel Commands
 /link-finding  Link a finding to a case with a reason
 /incident-note  Add an audited case note
 /resolve-incident  Close a case with an audited reason
+/deliveries  List notification send attempts
+/delivery  Inspect a notification send attempt
 /help     Show this help"""
 UNAUTHORIZED = "You are not authorized to use Sentinel commands."
 
@@ -67,6 +70,7 @@ class CommandHandler:
         asset_repository=None,
         detection_repository=None,
         incident_repository=None,
+        delivery_repository=None,
         detection_scope: str | None = None,
         allowed_users: Optional[Dict[str, Iterable[str]]] = None,
         rate_limit: int = 10,
@@ -79,6 +83,7 @@ class CommandHandler:
         self.asset_repository = asset_repository
         self.detection_repository = detection_repository
         self.incident_repository = incident_repository
+        self.delivery_repository = delivery_repository
         self.detection_scope = detection_scope
         configured = allowed_users or {
             "discord": parse_allowed_ids(os.getenv("DISCORD_ALLOWED_USER_IDS")),
@@ -123,6 +128,8 @@ class CommandHandler:
         return True
 
     def _dispatch(self, command: Command, *, platform: str, user_id: str) -> CommandResponse:
+        if command.name in {"deliveries", "delivery"}:
+            return DeliveryCommands(self.delivery_repository, self.detection_scope).handle(command.name, command.args)
         if command.name in INCIDENT_COMMANDS:
             return IncidentCommands(self.incident_repository, self.detection_scope).handle(
                 command.name, command.args, platform=platform, user_id=user_id)

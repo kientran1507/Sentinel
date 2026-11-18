@@ -122,7 +122,7 @@ class TestCommands(unittest.TestCase):
         client = bot._build_client(FakeDiscord)
         self.assertFalse(client.intents.message_content)
         tree = FakeTree.last
-        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings", "finding", "acknowledge_finding", "resolve_finding", "incidents", "incident", "create_incident", "link_finding", "incident_note", "resolve_incident"})
+        self.assertEqual(set(tree.commands), {"help", "devices", "status", "alerts", "events", "alert_history", "findings", "finding", "acknowledge_finding", "resolve_finding", "incidents", "incident", "create_incident", "link_finding", "incident_note", "resolve_incident", "deliveries", "delivery"})
         self.assertEqual(set(client.events), {"on_ready", "setup_hook"})
         asyncio.run(client.events["setup_hook"]())
         self.assertTrue(tree.synced_global)
@@ -165,6 +165,9 @@ class TestCommands(unittest.TestCase):
 
         incident_id = "incident:v1:" + "b" * 64
         native_cases = (
+            ("deliveries", {"limit": 2, "status": "started", "provider": "telegram", "alert": "Owner's alert", "before": "page token"},
+             "deliveries", ["--limit", "2", "--status", "started", "--provider", "telegram", "--alert", "Owner's alert", "--before", "page token"]),
+            ("delivery", {"attempt_id": "delivery:v1:" + "a" * 32}, "delivery", ["delivery:v1:" + "a" * 32]),
             ("create_incident", {"case_key": "review", "title": "Owner's SSH review"},
              "create-incident", ["review", "Owner's SSH review"]),
             ("link_finding", {"incident_id": incident_id, "finding_id": finding_id, "reason": "Owner's evidence"},

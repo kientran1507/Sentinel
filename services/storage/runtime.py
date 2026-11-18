@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from datetime import datetime, timezone
 from typing import Iterable
+from uuid import uuid4
 
 from services.alerting.engine import Alert
 from services.alerting.notifications import NotificationManager
@@ -18,6 +20,7 @@ from .devices import DeviceRepository, normalize_mac
 from .security_events import SecurityEventRepository
 from .detections import DetectionRepository
 from .incidents import IncidentRepository
+from .deliveries import DeliveryRepository
 from .base import Storage
 from .config import get_network_scope
 
@@ -40,6 +43,8 @@ class RuntimePersistence:
         self.security_events = SecurityEventRepository(storage)
         self.findings = DetectionRepository(storage)
         self.incidents = IncidentRepository(storage)
+        self.deliveries = DeliveryRepository(storage)
+        self.delivery_audit = NotificationDeliveryAudit(self.deliveries, self.assets.network_scope)
         self.detection_engine = DetectionEngine(
             RuleRegistry(default_rules() if detection_rules is None else detection_rules),
             assets=self.assets, events=self.security_events, findings=self.findings,
@@ -182,6 +187,26 @@ class PersistingDiscoverySink:
 
     def __call__(self, devices: Iterable[DiscoveredDevice]) -> None:
         self.persistence.persist_discovery_observations(devices, collector=self.collector)
+
+
+class NotificationDeliveryAudit:
+    """Record one actual provider invocation; never initiate sends or retries."""
+
+    def __init__(self, repository, network_scope):
+        self.repository = repository
+        self.network_scope = network_scope
+
+    def start(self, provider, alert):
+        return self.repository.start(attempt_id="delivery:v1:" + uuid4().hex,
+                                     network_scope=self.network_scope, alert_id=alert.alert_id,
+                                     provider=provider, started_at=datetime.now(timezone.utc))
+
+    def finish(self, attempt, *, succeeded):
+        result = self.repository.finish(attempt.attempt_id, network_scope=self.network_scope,
+                                        succeeded=succeeded, finished_at=datetime.now(timezone.utc))
+        if result is None:
+            raise ValueError("delivery audit start is unavailable")
+        return result
 
 
 class PersistingNotificationManager:

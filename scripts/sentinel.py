@@ -442,7 +442,7 @@ def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None
         presence_tracker = PresenceTracker(registry)
         event_bus = EventBus()
         alert_history = AlertHistory()
-        notification_manager = NotificationManager()
+        notification_manager = NotificationManager(audit=persistence.delivery_audit)
         notification_manager.add_from_environment()
         alert_notifications = PersistingNotificationManager(notification_manager, persistence)
         alert_engine = AlertEngine(notification_manager=alert_notifications, alert_history=alert_history)
@@ -470,6 +470,7 @@ def create_runtime(*, collector_failure_rule: CollectorFailureRule | None = None
             registry, monitor=monitor, alert_history=alert_history, history_service=history_service,
             asset_repository=persistence.assets, detection_repository=persistence.findings,
             incident_repository=persistence.incidents,
+            delivery_repository=persistence.deliveries,
             detection_scope=persistence.assets.network_scope,
         )
         command_service = CommandService(handler=handler)

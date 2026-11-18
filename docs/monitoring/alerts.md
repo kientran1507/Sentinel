@@ -19,7 +19,14 @@ Offline transitions are debounced; a continuously missing device does not alert 
 | Discord webhook | `DISCORD_WEBHOOK_URL` |
 | Telegram Bot API | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
-Providers receive device identity, event time, severity, and alert description. Provider failures are logged and isolated so another provider can continue. Zero providers is valid. Alert persistence is attempted before outbound delivery; no durable delivery/retry/acknowledgement ledger exists.
+Providers receive device identity, event time, severity, and alert description. Provider failures are logged and isolated so another provider can continue. Zero providers is valid. Alert persistence is attempted before outbound delivery.
+
+Milestone 4 development adds [scoped send-attempt history](../development/milestone-4-delivery-history.md)
+to the integrated runtime. Each provider invocation has a separate start and
+outcome record. Success means the provider call returned, not that a person read
+the alert. A started row without an outcome means completion is unknown. Audit
+failure preserves existing best-effort sending; no retry queue or automatic
+resend is enabled. These changes are not deployed to the accepted running image.
 
 ```text
 sentinel notification test --provider discord

@@ -47,7 +47,9 @@ PostgreSQL acceptance remains pending. Nothing has been deployed to production.
 The next slice adds [explicit investigation cases](milestone-4-incidents.md):
 scoped identity, operator-selected finding links, notes, resolution and immutable
 timelines. Owner unit/SQLite regression passed (482 tests); new PostgreSQL
-integration remains pending. Notification retries/delivery history, automatic
+integration remains pending. The [delivery-history slice](milestone-4-delivery-history.md)
+records provider calls and unknown completion without starting retries. Owner
+unit/SQLite regression passed (505 tests; 230 PostgreSQL skips). Durable dispatch/retries, automatic
 correlation policy, storm prevention and severity policies remain subsequent work.
 
 Before production reliance, separately validate backup/restore, upgrades with

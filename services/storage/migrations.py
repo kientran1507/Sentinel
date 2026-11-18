@@ -115,6 +115,22 @@ INCIDENT_STATEMENTS = (
 )
 
 
+DELIVERY_STATEMENTS = (
+    """CREATE TABLE IF NOT EXISTS notification_deliveries (
+        attempt_id TEXT PRIMARY KEY, network_scope TEXT NOT NULL, alert_id TEXT NOT NULL,
+        provider TEXT NOT NULL, started_at TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('started', 'succeeded', 'failed')),
+        finished_at TEXT, error_category TEXT,
+        CHECK ((status='started' AND finished_at IS NULL AND error_category IS NULL)
+            OR (status='succeeded' AND finished_at IS NOT NULL AND error_category IS NULL)
+            OR (status='failed' AND finished_at IS NOT NULL AND error_category='provider-error' AND error_category IS NOT NULL))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_deliveries_scope_time ON notification_deliveries (network_scope, started_at, attempt_id)",
+    "CREATE INDEX IF NOT EXISTS idx_deliveries_alert_time ON notification_deliveries (network_scope, alert_id, started_at, attempt_id)",
+    "CREATE INDEX IF NOT EXISTS idx_deliveries_status_time ON notification_deliveries (network_scope, status, started_at, attempt_id)",
+)
+
+
 MIGRATIONS = (
     Migration(
         1,
@@ -182,6 +198,7 @@ MIGRATIONS = (
     Migration(5, "audited finding resolution", DETECTION_AUDIT_STATEMENTS),
     Migration(6, "audited finding acknowledgement", DETECTION_ACKNOWLEDGEMENT_STATEMENTS),
     Migration(7, "scoped incidents and operator timelines", INCIDENT_STATEMENTS),
+    Migration(8, "notification send-attempt history", DELIVERY_STATEMENTS),
 )
 
 

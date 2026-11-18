@@ -112,7 +112,8 @@ Status: in progress since 2026-11-18. The [acknowledgement slice](docs/developme
 - [x] Define incident identity, explicit finding links and investigation timelines.
 - [x] Add incident actions and audit history with scope and authorization checks; [482 unit/SQLite tests passed](docs/development/milestone-4-incidents.md).
 - [ ] Decide automatic related-alert/finding correlation policy separately from explicit links.
-- [ ] Add delivery history, bounded notification retries, storm prevention and severity policies.
+- [x] Implement scoped send-attempt history and read-only inspection; [505 unit/SQLite tests passed](docs/development/milestone-4-delivery-history.md), new PostgreSQL acceptance pending.
+- [ ] Define durable dispatch and uncertain-outcome policy, then add bounded retries, storm prevention and severity policies.
 - [ ] Validate rollout, recovery and compatibility before any production migration.
 
 ## Milestone 5: API and Dashboard
